@@ -30,6 +30,9 @@ export interface Event {
   gender_field_required: boolean;
   status: "draft" | "published" | "archived";
   is_default: boolean;
+  team_lock_at: string | null;
+  whatsapp_group_url: string | null;
+  whatsapp_group_enabled: boolean;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -51,6 +54,7 @@ export interface Team {
   reference_id: string;
   status: "pending" | "verified" | "disqualified";
   extra_fields: Json;
+  submission_delegate_member_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -96,43 +100,7 @@ export interface Round {
   order_index: number;
   starts_at: string | null;
   ends_at: string | null;
-  status: "upcoming" | "active" | "completed";
-}
-
-export interface Exam {
-  id: string;
-  round_id: string;
-  title: string;
-  instructions: string | null;
-  duration_minutes: number;
-  starts_at: string;
-  ends_at: string;
-  shuffle_questions: boolean;
-  qualification_rule: Json;
-  answer_key_release_at: string | null;
-  status: "draft" | "scheduled" | "live" | "closed";
-}
-
-export interface ExamQuestion {
-  id: string;
-  exam_id: string;
-  question_text: string;
-  question_type: "mcq_single" | "mcq_multi" | "short_text";
-  options: Json;
-  correct_answer: Json | null;
-  marks: number;
-  order_index: number;
-}
-
-export interface ExamAttempt {
-  id: string;
-  exam_id: string;
-  team_member_id: string;
-  started_at: string;
-  expires_at: string;
-  submitted_at: string | null;
-  status: "in_progress" | "submitted" | "auto_submitted" | "disqualified";
-  score: number | null;
+  is_active: boolean;
 }
 
 export interface Submission {
@@ -140,13 +108,30 @@ export interface Submission {
   team_id: string;
   round_id: string;
   drive_folder_url: string | null;
+  document_link_url: string | null;
+  document_storage_path: string | null;
+  file_name: string | null;
+  file_size: number | null;
+  mime_type: string | null;
   checklist: Json;
   public_access_self_confirmed: boolean;
-  review_status: "pending" | "accessible" | "access_issue" | "accepted";
+  review_status: "pending_review" | "accepted" | "rejected";
   reviewer_notes: string | null;
   reviewed_by: string | null;
   reviewed_at: string | null;
+  submitted_by: string | null;
   submitted_at: string | null;
+  updated_at: string;
+}
+
+export interface FinalScore {
+  id: string;
+  round_id: string;
+  team_id: string;
+  judge_id: string;
+  score: number;
+  comments: string | null;
+  created_at: string;
   updated_at: string;
 }
 
@@ -240,6 +225,17 @@ export interface RequestRow {
   created_at: string;
 }
 
+export interface LoginActivityRow {
+  id: string;
+  attempted_email: string;
+  profile_id: string | null;
+  role: "participant" | "team_lead" | "event_admin" | "reviewer" | "super_admin" | "unknown";
+  outcome: "success" | "invalid_credentials" | "rate_limited";
+  ip_address: string | null;
+  user_agent: string | null;
+  created_at: string;
+}
+
 export interface FeedbackRow {
   id: string;
   event_id: string;
@@ -286,6 +282,10 @@ export type Database = {
           community_base_count: number;
           displayed_community_count: number;
         }[];
+      };
+      transfer_team_lead: {
+        Args: { p_team_id: string; p_new_lead_member_id: string };
+        Returns: void;
       };
     };
   };

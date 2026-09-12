@@ -13,20 +13,14 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, Save, Lock, UploadCloud } from "lucide-react";
 import { toast } from "sonner";
 import { updateEvent } from "@/app/admin/events/actions";
+import { toISTDatetimeLocalValue, fromISTDatetimeLocalValue } from "@/lib/date";
+import { isValidWhatsappGroupUrl } from "@/lib/whatsapp";
 import type { Event, Json } from "@/types/database";
 import { useRef } from "react";
 import { useRouter } from "next/navigation";
 
-function toDatetimeLocal(iso: string | null) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function fromDatetimeLocal(v: string) {
-  return v ? new Date(v).toISOString() : null;
-}
+const toDatetimeLocal = toISTDatetimeLocalValue;
+const fromDatetimeLocal = fromISTDatetimeLocalValue;
 
 export function EventConfigForm({ event, readOnly }: { event: Event; readOnly: boolean }) {
   const [values, setValues] = useState({
@@ -39,6 +33,7 @@ export function EventConfigForm({ event, readOnly }: { event: Event; readOnly: b
     end_date: event.end_date ?? "",
     registration_open_at: toDatetimeLocal(event.registration_open_at),
     registration_close_at: toDatetimeLocal(event.registration_close_at),
+    team_lock_at: toDatetimeLocal(event.team_lock_at),
     timezone: event.timezone,
     team_size_min: event.team_size_min,
     team_size_max: event.team_size_max,
@@ -51,6 +46,8 @@ export function EventConfigForm({ event, readOnly }: { event: Event; readOnly: b
     allow_gender_field: event.allow_gender_field,
     gender_field_required: event.gender_field_required,
     status: event.status,
+    whatsapp_group_url: event.whatsapp_group_url ?? "",
+    whatsapp_group_enabled: event.whatsapp_group_enabled,
   });
   const [saving, setSaving] = useState(false);
 
@@ -66,8 +63,10 @@ export function EventConfigForm({ event, readOnly }: { event: Event; readOnly: b
       end_date: values.end_date || null,
       registration_open_at: fromDatetimeLocal(values.registration_open_at),
       registration_close_at: fromDatetimeLocal(values.registration_close_at),
+      team_lock_at: fromDatetimeLocal(values.team_lock_at),
       problem_statement_text: values.problem_statement_text || null,
       support_website: values.support_website || null,
+      whatsapp_group_url: values.whatsapp_group_url.trim() || null,
     });
     setSaving(false);
     if (!result.ok) {
@@ -94,6 +93,7 @@ export function EventConfigForm({ event, readOnly }: { event: Event; readOnly: b
             <TabsTrigger value="dates">Dates & Team Size</TabsTrigger>
             <TabsTrigger value="contact">Contact</TabsTrigger>
             <TabsTrigger value="problem">Problem Statement</TabsTrigger>
+            <TabsTrigger value="whatsapp">WhatsApp Group</TabsTrigger>
             <TabsTrigger value="publish">Publish</TabsTrigger>
           </TabsList>
 
@@ -125,11 +125,19 @@ export function EventConfigForm({ event, readOnly }: { event: Event; readOnly: b
             <Field label="Event end date">
               <Input type="date" disabled={readOnly} value={values.end_date ?? ""} onChange={(e) => set("end_date", e.target.value)} />
             </Field>
-            <Field label="Registration opens">
+            <Field label="Registration opens (IST)">
               <Input type="datetime-local" disabled={readOnly} value={values.registration_open_at} onChange={(e) => set("registration_open_at", e.target.value)} />
             </Field>
-            <Field label="Registration closes">
+            <Field label="Registration closes (IST)">
               <Input type="datetime-local" disabled={readOnly} value={values.registration_close_at} onChange={(e) => set("registration_close_at", e.target.value)} />
+            </Field>
+            <Field label="Team changes lock at (IST)" full>
+              <Input type="datetime-local" disabled={readOnly} value={values.team_lock_at} onChange={(e) => set("team_lock_at", e.target.value)} />
+              <p className="text-xs text-muted-foreground">
+                Once this passes, teams can no longer add/remove members, rename the team, transfer leadership, or
+                change delegate submission access. Submissions during an open round window are not affected. Leave
+                blank to not lock team changes yet.
+              </p>
             </Field>
             <Field label="Timezone">
               <Input disabled={readOnly} value={values.timezone} onChange={(e) => set("timezone", e.target.value)} placeholder="Asia/Kolkata" />
@@ -193,6 +201,29 @@ export function EventConfigForm({ event, readOnly }: { event: Event; readOnly: b
                 <Textarea disabled={readOnly} rows={4} value={values.problem_statement_text} onChange={(e) => set("problem_statement_text", e.target.value)} />
               </Field>
             )}
+          </TabsContent>
+
+          <TabsContent value="whatsapp" className="space-y-4">
+            <Field label="Group invite link" full>
+              <Input
+                disabled={readOnly}
+                value={values.whatsapp_group_url}
+                onChange={(e) => set("whatsapp_group_url", e.target.value)}
+                placeholder="https://chat.whatsapp.com/..."
+              />
+            </Field>
+            <div className="flex items-center gap-2">
+              <Switch
+                disabled={readOnly || !isValidWhatsappGroupUrl(values.whatsapp_group_url)}
+                checked={values.whatsapp_group_enabled}
+                onCheckedChange={(v) => set("whatsapp_group_enabled", v)}
+              />
+              <Label className="font-normal">Show &ldquo;Join WhatsApp Group&rdquo; button</Label>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Shown on the registration confirmation page and participant dashboard once a valid link is set and
+              enabled here. This is a group invite only - WhatsApp is not used to send notifications.
+            </p>
           </TabsContent>
 
           <TabsContent value="publish" className="space-y-4">

@@ -37,7 +37,9 @@ export default async function IdCardPage() {
           revoked={c.revoked}
           fullName={portal.membership.full_name}
           teamName={portal.team.team_name}
+          teamReferenceId={portal.team.reference_id}
           eventName={portal.event.name}
+          organizerName={portal.event.organizer_name}
           role={portal.membership.role}
           referenceId={portal.membership.reference_id}
         />

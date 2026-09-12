@@ -1,7 +1,9 @@
 import { getPortalContext } from "@/lib/portal/data";
 import { createClient } from "@/lib/supabase/server";
 import { SubmissionForm } from "@/components/portal/submission-form";
+import { DocumentSubmissionForm } from "@/components/portal/document-submission-form";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { isSubmissionWindowOpen, submissionUnavailableReason } from "@/lib/rounds";
 import type { Round, Submission } from "@/types/database";
 
 export default async function SubmissionPage() {
@@ -9,12 +11,7 @@ export default async function SubmissionPage() {
   if (!portal) return null;
 
   const supabase = await createClient();
-  const { data: rounds } = await supabase
-    .from("rounds")
-    .select("*")
-    .eq("event_id", portal.event.id)
-    .neq("key", "minor")
-    .order("order_index");
+  const { data: rounds } = await supabase.from("rounds").select("*").eq("event_id", portal.event.id).order("order_index");
   const roundList = (rounds as unknown as Round[] | null) ?? [];
   const roundIds = roundList.map((r) => r.id);
 
@@ -23,14 +20,14 @@ export default async function SubmissionPage() {
       ? await supabase.from("submissions").select("*").eq("team_id", portal.team.id).in("round_id", roundIds)
       : { data: [] as Submission[] };
 
-  const isLead = portal.membership.role === "lead";
+  const canSubmit = portal.membership.role === "lead" || portal.team.submission_delegate_member_id === portal.membership.id;
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-heading text-2xl font-bold">Your project submission</h1>
+        <h1 className="font-heading text-2xl font-bold">Your round submissions</h1>
         <p className="text-muted-foreground">
-          Keep your team&apos;s required project materials together in one public Google Drive folder.
+          Submit the required materials for each round before its submission window closes.
         </p>
       </div>
 
@@ -44,22 +41,35 @@ export default async function SubmissionPage() {
 
       {roundList.map((round) => {
         const submission = (submissions as unknown as Submission[] | null)?.find((s) => s.round_id === round.id) ?? null;
+        const windowOpen = isSubmissionWindowOpen(round);
+        const unavailableReason = submissionUnavailableReason(round);
+
         return (
           <Card key={round.id}>
             <CardHeader>
               <CardTitle className="text-base">{round.name}</CardTitle>
-              <CardDescription>
-                {round.ends_at ? `Deadline: ${new Date(round.ends_at).toLocaleString()}` : "Deadline: To be announced"}
-              </CardDescription>
+              <CardDescription>{unavailableReason ?? "Submissions are open."}</CardDescription>
             </CardHeader>
             <CardContent>
-              <SubmissionForm
-                teamId={portal.team.id}
-                roundId={round.id}
-                submission={submission}
-                canEdit={isLead}
-                deadlinePassed={Boolean(round.ends_at && Date.now() > Date.parse(round.ends_at))}
-              />
+              {round.key === "minor" ? (
+                <DocumentSubmissionForm
+                  teamId={portal.team.id}
+                  roundId={round.id}
+                  submission={submission}
+                  canEdit={canSubmit}
+                  windowOpen={windowOpen}
+                  unavailableReason={unavailableReason}
+                />
+              ) : (
+                <SubmissionForm
+                  teamId={portal.team.id}
+                  roundId={round.id}
+                  submission={submission}
+                  canEdit={canSubmit}
+                  windowOpen={windowOpen}
+                  unavailableReason={unavailableReason}
+                />
+              )}
             </CardContent>
           </Card>
         );

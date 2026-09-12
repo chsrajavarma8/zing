@@ -9,9 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Send, UserRound, Users2, Users } from "lucide-react";
+import { Loader2, Send, Users } from "lucide-react";
 import { toast } from "sonner";
 import { sendNotification, previewAudienceCount, type NotificationInput } from "@/app/admin/notifications/actions";
+import { fromISTDatetimeLocalValue } from "@/lib/date";
 import type { Round, Team } from "@/types/database";
 
 export function NotificationComposer({ eventId, rounds, teams }: { eventId: string; rounds: Round[]; teams: Team[] }) {
@@ -19,7 +20,6 @@ export function NotificationComposer({ eventId, rounds, teams }: { eventId: stri
   const [message, setMessage] = useState("");
   const [audienceType, setAudienceType] = useState<NotificationInput["audienceType"]>("all");
   const [priority, setPriority] = useState<NotificationInput["priority"]>("normal");
-  const [channels, setChannels] = useState<Set<string>>(new Set(["in_app"]));
   const [teamIds, setTeamIds] = useState<Set<string>>(new Set());
   const [emails, setEmails] = useState("");
   const [roundId, setRoundId] = useState(rounds[0]?.id ?? "");
@@ -44,16 +44,7 @@ export function NotificationComposer({ eventId, rounds, teams }: { eventId: stri
     return () => clearTimeout(id);
   }, [eventId, audienceType, teamIds, emails, roundId]);
 
-  function toggleChannel(c: string) {
-    setChannels((s) => {
-      const next = new Set(s);
-      if (next.has(c)) next.delete(c);
-      else next.add(c);
-      return next;
-    });
-  }
-
-  async function submit(overrideAudience?: NotificationInput["audienceType"]) {
+  async function submit() {
     if (!title.trim() || !message.trim()) {
       toast.error("Title and message are required.");
       return;
@@ -62,14 +53,13 @@ export function NotificationComposer({ eventId, rounds, teams }: { eventId: stri
     const result = await sendNotification(eventId, {
       title,
       message,
-      audienceType: overrideAudience ?? audienceType,
+      audienceType,
       teamIds: Array.from(teamIds),
       emails: emails.split(/[\n,]/).map((e) => e.trim()).filter(Boolean),
       roundId,
       priority,
-      channels: Array.from(channels) as NotificationInput["channels"],
       actionLink,
-      scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : null,
+      scheduledAt: fromISTDatetimeLocalValue(scheduledAt),
     });
     setBusy(false);
     if (!result.ok) {
@@ -86,18 +76,9 @@ export function NotificationComposer({ eventId, rounds, teams }: { eventId: stri
     <Card>
       <CardHeader>
         <CardTitle className="text-base">Compose notification</CardTitle>
-        <CardDescription>Two one-click actions below, or build a custom audience.</CardDescription>
+        <CardDescription>Choose an audience below, then send.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" disabled={busy} onClick={() => submit("team_leads")}>
-            <UserRound className="h-4 w-4" /> Notify team leads
-          </Button>
-          <Button type="button" variant="outline" disabled={busy} onClick={() => submit("team_members")}>
-            <Users2 className="h-4 w-4" /> Notify team members
-          </Button>
-        </div>
-
         <div className="space-y-2">
           <Label>Title</Label>
           <Input value={title} onChange={(e) => setTitle(e.target.value)} />
@@ -208,7 +189,7 @@ export function NotificationComposer({ eventId, rounds, teams }: { eventId: stri
         </div>
 
         <div className="space-y-2">
-          <Label>Schedule for later (optional)</Label>
+          <Label>Schedule for later (optional, IST)</Label>
           <Input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} className="w-full sm:w-64" />
           <p className="text-xs text-muted-foreground">
             Leave blank to send immediately. Scheduled sends are dispatched by a cron job that only runs once this
@@ -216,22 +197,15 @@ export function NotificationComposer({ eventId, rounds, teams }: { eventId: stri
           </p>
         </div>
 
-        <div className="space-y-2">
-          <Label>Channels</Label>
-          <div className="flex flex-wrap gap-4">
-            {["in_app", "email", "whatsapp"].map((c) => (
-              <label key={c} className="flex items-center gap-2 text-sm capitalize">
-                <Checkbox checked={channels.has(c)} onCheckedChange={() => toggleChannel(c)} />
-                {c.replace("_", "-")}
-              </label>
-            ))}
-          </div>
-        </div>
+        <p className="text-xs text-muted-foreground">
+          Delivered as an in-website notification only. Recipients see it in their notification bell and on
+          <code className="mx-1 rounded bg-muted px-1 py-0.5">/portal/notifications</code>.
+        </p>
       </CardContent>
       <CardFooter>
-        <Button onClick={() => submit()} disabled={busy}>
+        <Button onClick={submit} disabled={busy}>
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          {scheduledAt ? "Schedule notification" : "Send notification"}
+          {scheduledAt ? "Schedule Event Update" : "Send Event Update"}
         </Button>
       </CardFooter>
     </Card>

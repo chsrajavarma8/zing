@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Trash2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { upsertCriterion, deleteCriterion, saveScore, setPublication, setQualification } from "@/app/admin/judging/actions";
+import { upsertCriterion, deleteCriterion, saveFinalScore, setPublication, setQualification } from "@/app/admin/judging/actions";
 import type { Round, JudgingCriterion, Team } from "@/types/database";
 
 interface Props {
@@ -20,12 +20,12 @@ interface Props {
   canManage: boolean;
   criteria: JudgingCriterion[];
   teams: Team[];
-  scores: { team_id: string; criterion_id: string; judge_id: string; marks: number }[];
+  finalScores: { team_id: string; judge_id: string; score: number; comments: string | null }[];
   publications: { scope: string; is_published: boolean; reviewer_feedback_visible: boolean }[];
   qualifications: { team_id: string; status: string; rank: number | null }[];
 }
 
-export function JudgingPanel({ round, eventId, currentUserId, canManage, criteria, teams, scores, publications, qualifications }: Props) {
+export function JudgingPanel({ round, eventId, currentUserId, canManage, criteria, teams, finalScores, publications, qualifications }: Props) {
   const [, startTransition] = useTransition();
   const [newCriterion, setNewCriterion] = useState({ name: "", maxMarks: 10, weight: 1 });
   const participantPub = publications.find((p) => p.scope === "participant");
@@ -41,14 +41,17 @@ export function JudgingPanel({ round, eventId, currentUserId, canManage, criteri
     }
   }
 
-  function myScore(teamId: string, criterionId: string) {
-    return scores.find((s) => s.team_id === teamId && s.criterion_id === criterionId && s.judge_id === currentUserId)?.marks;
+  function myScore(teamId: string) {
+    return finalScores.find((s) => s.team_id === teamId && s.judge_id === currentUserId)?.score;
   }
 
-  function teamTotal(teamId: string) {
-    const relevant = scores.filter((s) => s.team_id === teamId);
+  // Preserves the pre-existing multi-judge aggregation rule: a team's
+  // published total is the average of every judge's individual score, so
+  // adding more judges doesn't mechanically inflate a team's total.
+  function teamAverage(teamId: string) {
+    const relevant = finalScores.filter((s) => s.team_id === teamId);
     if (relevant.length === 0) return null;
-    return relevant.reduce((sum, s) => sum + s.marks, 0) / new Set(relevant.map((s) => s.judge_id)).size;
+    return relevant.reduce((sum, s) => sum + s.score, 0) / relevant.length;
   }
 
   return (
@@ -97,40 +100,43 @@ export function JudgingPanel({ round, eventId, currentUserId, canManage, criteri
         </CardContent>
       </Card>
 
-      {criteria.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Enter your scores</CardTitle>
-            <CardDescription>Scores you enter are attributed to your account and stay in draft until published.</CardDescription>
-          </CardHeader>
-          <CardContent className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Team</TableHead>
-                  {criteria.map((c) => (
-                    <TableHead key={c.id} className="text-right">{c.name}</TableHead>
-                  ))}
-                  <TableHead className="text-right">Avg. total</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {teams.map((t) => (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Enter your final score</CardTitle>
+          <CardDescription>
+            One overall score from 1 to 100 per team, weighing the marking criteria above. Attributed to your
+            account and stays in draft until published.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Team</TableHead>
+                <TableHead className="text-right">Your score (1-100)</TableHead>
+                <TableHead className="text-right">Judges scored</TableHead>
+                <TableHead className="text-right">Team average</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {teams.map((t) => {
+                const teamScores = finalScores.filter((s) => s.team_id === t.id);
+                const avg = teamAverage(t.id);
+                return (
                   <TableRow key={t.id}>
                     <TableCell className="font-medium">{t.team_name}</TableCell>
-                    {criteria.map((c) => (
-                      <TableCell key={c.id} className="text-right">
-                        <ScoreInput roundId={round.id} teamId={t.id} criterionId={c.id} maxMarks={c.max_marks} initial={myScore(t.id, c.id)} />
-                      </TableCell>
-                    ))}
-                    <TableCell className="text-right font-mono font-semibold">{teamTotal(t.id)?.toFixed(1) ?? "N/A"}</TableCell>
+                    <TableCell className="text-right">
+                      <FinalScoreInput roundId={round.id} teamId={t.id} initial={myScore(t.id)} />
+                    </TableCell>
+                    <TableCell className="text-right text-muted-foreground">{teamScores.length}</TableCell>
+                    <TableCell className="text-right font-mono font-semibold">{avg !== null ? avg.toFixed(1) : "N/A"}</TableCell>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+                );
+              })}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
 
       {canManage && (
         <>
@@ -211,27 +217,30 @@ export function JudgingPanel({ round, eventId, currentUserId, canManage, criteri
   );
 }
 
-function ScoreInput({ roundId, teamId, criterionId, maxMarks, initial }: { roundId: string; teamId: string; criterionId: string; maxMarks: number; initial?: number }) {
+function FinalScoreInput({ roundId, teamId, initial }: { roundId: string; teamId: string; initial?: number }) {
   const [value, setValue] = useState(initial?.toString() ?? "");
   const [saving, setSaving] = useState(false);
 
   async function commit() {
+    if (value.trim() === "") return;
     const n = Number(value);
-    if (Number.isNaN(n) || n < 0 || n > maxMarks) {
-      toast.error(`Enter a value between 0 and ${maxMarks}`);
+    if (!Number.isFinite(n) || n < 1 || n > 100) {
+      toast.error("Enter a score between 1 and 100.");
       return;
     }
     setSaving(true);
-    const result = await saveScore(roundId, teamId, criterionId, n);
+    const result = await saveFinalScore(roundId, teamId, n);
     setSaving(false);
     if (!result.ok) toast.error(result.error ?? "Could not save.");
+    else toast.success("Score saved");
   }
 
   return (
     <Input
       type="number"
-      min={0}
-      max={maxMarks}
+      min={1}
+      max={100}
+      step={1}
       value={value}
       onChange={(e) => setValue(e.target.value)}
       onBlur={commit}

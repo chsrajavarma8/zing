@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Star, MessageSquareHeart } from "lucide-react";
+import { formatDateTime } from "@/lib/date";
 import type { FeedbackRow } from "@/types/database";
 
 export default async function AdminFeedbackPage({ searchParams }: { searchParams: Promise<{ rating?: string }> }) {
@@ -60,7 +61,7 @@ export default async function AdminFeedbackPage({ searchParams }: { searchParams
                 <span className="text-sm text-muted-foreground">
                   {f.teams?.team_name} · {f.profiles?.full_name || f.profiles?.email}
                 </span>
-                <span className="text-xs text-muted-foreground">{new Date(f.created_at).toLocaleString()}</span>
+                <span className="text-xs text-muted-foreground">{formatDateTime(f.created_at)}</span>
               </div>
               <div className="flex flex-wrap gap-2">
                 <RatingBadge label="Overall" value={f.rating} />

@@ -3,8 +3,11 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/auth/password-input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, Trash2, UserPlus } from "lucide-react";
 import { toast } from "sonner";
@@ -27,19 +30,31 @@ export function RolesManager({ eventId, admins, pendingInvites }: { eventId: str
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"event_admin" | "reviewer">("event_admin");
+  const [setPasswordNow, setSetPasswordNow] = useState(false);
+  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function invite() {
     if (!email.trim()) return;
+    if (setPasswordNow && password.trim().length < 8) {
+      toast.error("Initial password must be at least 8 characters.");
+      return;
+    }
     setBusy(true);
-    const result = await inviteAdmin(eventId, email, role);
+    const result = await inviteAdmin(eventId, email, role, setPasswordNow ? password : undefined);
     setBusy(false);
     if (!result.ok) {
       toast.error(result.error ?? "Could not invite.");
       return;
     }
-    toast.success("Invite created: they'll be granted access on first sign-in.");
+    toast.success(
+      setPasswordNow
+        ? "Account created. They can sign in with the password you set and will be asked to change it."
+        : "Invite created: they'll be granted access on first sign-in.",
+    );
     setEmail("");
+    setPassword("");
+    setSetPasswordNow(false);
     router.refresh();
   }
 
@@ -49,26 +64,47 @@ export function RolesManager({ eventId, admins, pendingInvites }: { eventId: str
         <CardHeader>
           <CardTitle className="text-base">Invite an admin or reviewer</CardTitle>
         </CardHeader>
-        <CardContent className="flex flex-wrap items-end gap-3">
-          <div className="space-y-2">
-            <label className="text-xs text-muted-foreground">Email</label>
-            <Input value={email} onChange={(e) => setEmail(e.target.value)} className="w-64" placeholder="person@example.com" />
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-2">
+              <label className="text-xs text-muted-foreground">Email</label>
+              <Input value={email} onChange={(e) => setEmail(e.target.value)} className="w-64" placeholder="person@example.com" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs text-muted-foreground">Role</label>
+              <Select value={role} onValueChange={(v) => setRole(v as "event_admin" | "reviewer")}>
+                <SelectTrigger className="w-44">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="event_admin">Event admin</SelectItem>
+                  <SelectItem value="reviewer">Reviewer / judge</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <div className="space-y-2">
-            <label className="text-xs text-muted-foreground">Role</label>
-            <Select value={role} onValueChange={(v) => setRole(v as "event_admin" | "reviewer")}>
-              <SelectTrigger className="w-44">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="event_admin">Event admin</SelectItem>
-                <SelectItem value="reviewer">Reviewer / judge</SelectItem>
-              </SelectContent>
-            </Select>
+
+          <div className="flex items-center gap-2">
+            <Checkbox id="setPasswordNow" checked={setPasswordNow} onCheckedChange={(v) => setSetPasswordNow(Boolean(v))} />
+            <Label htmlFor="setPasswordNow" className="font-normal">
+              Set an initial password now instead of emailing a setup link
+            </Label>
           </div>
+
+          {setPasswordNow && (
+            <div className="max-w-xs space-y-2">
+              <label className="text-xs text-muted-foreground">Initial password</label>
+              <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" />
+              <p className="text-xs text-muted-foreground">
+                They can sign in with exactly this password right away and must set their own private password on
+                first login.
+              </p>
+            </div>
+          )}
+
           <Button onClick={invite} disabled={busy}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
-            Send invite
+            {setPasswordNow ? "Create account" : "Send invite"}
           </Button>
         </CardContent>
       </Card>

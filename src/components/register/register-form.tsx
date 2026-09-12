@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
@@ -25,10 +26,14 @@ import {
   ArrowRight,
   Users,
   UserRound,
+  MessageCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
 import { track } from "@/lib/analytics";
+import { shouldShowWhatsappGroupButton } from "@/lib/whatsapp";
+import { GENDER_OPTIONS, type Gender } from "@/lib/gender";
+import { Reveal } from "@/components/motion/reveal";
 
 interface EventInfo {
   id: string;
@@ -37,6 +42,8 @@ interface EventInfo {
   teamSizeMax: number;
   allowGenderField: boolean;
   genderFieldRequired: boolean;
+  whatsappGroupUrl: string | null;
+  whatsappGroupEnabled: boolean;
 }
 
 interface CustomField {
@@ -185,6 +192,7 @@ export function RegisterForm({
     return (
       <div>
         <StepIndicator steps={[...STEPS, { label: "Confirmation" }]} current={STEPS.length} />
+        <Reveal y={12}>
         <Card className="card-glow border-primary/30">
           <CardHeader className="items-center text-center">
             <CheckCircle2 className="mb-2 h-10 w-10 text-emerald-500" />
@@ -250,7 +258,7 @@ export function RegisterForm({
               <AlertTitle>Next step: sign in with your temporary password</AlertTitle>
               <AlertDescription>
                 No email is sent. Each team member signs in with their own email and a temporary password built
-                from their team name, their own name, and their date of birth: see &quot;First-time login
+                from their team name, their own name, and their birth year: see &quot;First-time login
                 instructions&quot; on the sign-in page for the exact formula. You&apos;ll be asked to set a private
                 password the first time you sign in; no one else, including the team lead, can set it for you.
               </AlertDescription>
@@ -267,6 +275,17 @@ export function RegisterForm({
               </Alert>
             )}
 
+            {shouldShowWhatsappGroupButton({
+              whatsapp_group_url: event.whatsappGroupUrl,
+              whatsapp_group_enabled: event.whatsappGroupEnabled,
+            }) && (
+              <Button asChild variant="outline" className="border-[#25D366]/40 text-[#128C7E] hover:bg-[#25D366]/10">
+                <a href={event.whatsappGroupUrl!} target="_blank" rel="noopener noreferrer">
+                  <MessageCircle className="h-4 w-4" /> Join WhatsApp Group
+                </a>
+              </Button>
+            )}
+
             <div className="flex flex-wrap gap-3 pt-2">
               <Button asChild className="glow-primary">
                 <Link href="/login">Continue to sign in</Link>
@@ -277,6 +296,7 @@ export function RegisterForm({
             </div>
           </CardContent>
         </Card>
+        </Reveal>
       </div>
     );
   }
@@ -569,7 +589,16 @@ function MemberFields({
       </div>
       <div className="space-y-2">
         <Label htmlFor={`members.${index}.mobile`}>Mobile number</Label>
-        <Input id={`members.${index}.mobile`} placeholder="+91 98765 43210" {...form.register(`members.${index}.mobile`)} />
+        <div className="flex items-center gap-2">
+          <span className="flex h-9 shrink-0 items-center rounded-md border bg-muted px-3 text-sm text-muted-foreground">+91</span>
+          <Input
+            id={`members.${index}.mobile`}
+            placeholder="10-digit mobile number"
+            inputMode="numeric"
+            maxLength={10}
+            {...form.register(`members.${index}.mobile`)}
+          />
+        </div>
         <FieldError err={errors?.mobile} />
       </div>
       <div className="space-y-2 sm:col-span-2">
@@ -587,7 +616,16 @@ function MemberFields({
         {!sameAsMobile && (
           <div className="space-y-2 pt-1">
             <Label htmlFor={`members.${index}.whatsapp`}>WhatsApp number</Label>
-            <Input id={`members.${index}.whatsapp`} placeholder="+91 98765 43210" {...form.register(`members.${index}.whatsapp`)} />
+            <div className="flex items-center gap-2">
+              <span className="flex h-9 shrink-0 items-center rounded-md border bg-muted px-3 text-sm text-muted-foreground">+91</span>
+              <Input
+                id={`members.${index}.whatsapp`}
+                placeholder="10-digit WhatsApp number"
+                inputMode="numeric"
+                maxLength={10}
+                {...form.register(`members.${index}.whatsapp`)}
+              />
+            </div>
             <FieldError err={errors?.whatsapp} />
           </div>
         )}
@@ -597,7 +635,23 @@ function MemberFields({
           <Label htmlFor={`members.${index}.gender`}>
             Gender {event.genderFieldRequired ? "" : <span className="text-muted-foreground">(optional)</span>}
           </Label>
-          <Input id={`members.${index}.gender`} {...form.register(`members.${index}.gender`)} />
+          <Select
+            value={form.watch(`members.${index}.gender`) || undefined}
+            onValueChange={(v) => form.setValue(`members.${index}.gender`, v as Gender)}
+          >
+            <SelectTrigger id={`members.${index}.gender`} className="w-full">
+              <SelectValue placeholder="Select gender" />
+            </SelectTrigger>
+            <SelectContent>
+              {GENDER_OPTIONS.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">Kept private - never shown on any public page.</p>
+          <FieldError err={errors?.gender} />
         </div>
       )}
     </div>

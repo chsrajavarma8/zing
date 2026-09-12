@@ -3,7 +3,8 @@ import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CalendarClock, Info } from "lucide-react";
-import type { Round, Exam } from "@/types/database";
+import { formatDateTime } from "@/lib/date";
+import type { Round } from "@/types/database";
 
 export default async function PortalSchedulePage() {
   const portal = await getPortalContext();
@@ -12,20 +13,13 @@ export default async function PortalSchedulePage() {
   const supabase = await createClient();
   const { data: rounds } = await supabase.from("rounds").select("*").eq("event_id", portal.event.id).order("order_index");
   const roundList = (rounds as unknown as Round[] | null) ?? [];
-  const roundIds = roundList.map((r) => r.id);
-  const { data: exams } = roundIds.length > 0 ? await supabase.from("exams").select("*").in("round_id", roundIds) : { data: [] as Exam[] };
 
   const items = [
     portal.event.registration_close_at && { label: "Registration closes", at: portal.event.registration_close_at },
-    ...roundList.flatMap((r) => {
-      const exam = (exams as unknown as Exam[] | null)?.find((e) => e.round_id === r.id);
-      return [
-        r.starts_at && { label: `${r.name} begins`, at: r.starts_at },
-        exam && { label: `${r.name} exam window opens`, at: exam.starts_at },
-        exam && { label: `${r.name} exam window closes`, at: exam.ends_at },
-        r.ends_at && { label: `${r.name} ends / submission deadline`, at: r.ends_at },
-      ];
-    }),
+    ...roundList.flatMap((r) => [
+      r.starts_at && { label: `${r.name} begins / submission window opens`, at: r.starts_at },
+      r.ends_at && { label: `${r.name} ends / submission deadline`, at: r.ends_at },
+    ]),
   ].filter(Boolean) as { label: string; at: string }[];
 
   items.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
@@ -35,7 +29,7 @@ export default async function PortalSchedulePage() {
       <div>
         <h1 className="text-2xl font-bold">Schedule</h1>
         <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-          <Info className="h-3.5 w-3.5" /> All times shown in {portal.event.timezone}.
+          <Info className="h-3.5 w-3.5" /> All times shown in Indian Standard Time (IST).
         </p>
       </div>
 
@@ -51,9 +45,7 @@ export default async function PortalSchedulePage() {
                 </div>
                 <div className="flex items-center gap-2">
                   {past && <Badge variant="secondary">Past</Badge>}
-                  <span className="text-sm text-muted-foreground">
-                    {new Date(item.at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
-                  </span>
+                  <span className="text-sm text-muted-foreground">{formatDateTime(item.at)}</span>
                 </div>
               </CardContent>
             </Card>

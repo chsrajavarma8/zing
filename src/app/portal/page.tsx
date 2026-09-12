@@ -13,8 +13,12 @@ import {
   Megaphone,
   CheckCircle2,
   ClipboardCheck,
+  MessageCircle,
 } from "lucide-react";
 import Link from "next/link";
+import { formatDate, formatDateTime } from "@/lib/date";
+import { shouldShowWhatsappGroupButton } from "@/lib/whatsapp";
+import { Reveal } from "@/components/motion/reveal";
 import type { Round, Submission } from "@/types/database";
 
 export default async function PortalDashboardPage() {
@@ -45,7 +49,7 @@ export default async function PortalDashboardPage() {
     ]);
 
   const roundList = (rounds as unknown as Round[] | null) ?? [];
-  const currentRound = roundList.find((r) => r.status === "active") ?? roundList[0];
+  const currentRound = roundList.find((r) => r.is_active) ?? roundList[0];
   const submissionList = (submissions as unknown as Submission[] | null) ?? [];
   const unreadCount = (notifRecipients as unknown as { read_at: string | null }[] | null)?.filter((n) => !n.read_at).length ?? 0;
   const registrationStatus = getRegistrationStatus(event);
@@ -57,11 +61,12 @@ export default async function PortalDashboardPage() {
   }
   if (currentRound) {
     const submission = submissionList.find((s) => s.round_id === currentRound.id);
-    if (!submission?.drive_folder_url && currentRound.key !== "minor") {
-      requiredActions.push({ label: `Submit your Google Drive folder link for ${currentRound.name}`, href: "/portal/submission" });
-    }
-    if (currentRound.key === "minor") {
-      requiredActions.push({ label: "Start the Minor round screening exam", href: `/portal/exam/${currentRound.id}` });
+    const hasSubmitted = Boolean(submission?.drive_folder_url || submission?.document_storage_path || submission?.document_link_url);
+    if (!hasSubmitted) {
+      requiredActions.push({
+        label: currentRound.key === "minor" ? "Submit your Talent Round document" : `Submit your Google Drive folder link for ${currentRound.name}`,
+        href: "/portal/submission",
+      });
     }
   }
 
@@ -70,23 +75,34 @@ export default async function PortalDashboardPage() {
     .sort((a, b) => Date.parse(a.ends_at!) - Date.parse(b.ends_at!))
     .slice(0, 3);
 
-  const submissionStatusSummary = roundList.find((r) => r.key !== "minor" && submissionList.some((s) => s.round_id === r.id))
+  const submissionStatusSummary = roundList.find((r) => submissionList.some((s) => s.round_id === r.id))
     ? "In progress"
     : "Not started";
 
   return (
     <div className="space-y-6">
-      <div className="border-b border-primary/12 pb-6">
-        <h1 className="font-heading text-3xl font-bold tracking-tight">Welcome, {firstName}.</h1>
-        <p className="mt-1 text-muted-foreground">Here&apos;s what your team needs to know.</p>
+      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-primary/12 pb-6">
+        <div>
+          <h1 className="font-heading text-3xl font-bold tracking-tight">Welcome, {firstName}.</h1>
+          <p className="mt-1 text-muted-foreground">Here&apos;s what your team needs to know.</p>
+        </div>
+        {shouldShowWhatsappGroupButton(event) && (
+          <Button asChild variant="outline" className="border-[#25D366]/40 text-[#128C7E] hover:bg-[#25D366]/10">
+            <a href={event.whatsapp_group_url!} target="_blank" rel="noopener noreferrer">
+              <MessageCircle className="h-4 w-4" /> Join WhatsApp Group
+            </a>
+          </Button>
+        )}
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatusCard icon={Trophy} label="Current round" value={currentRound?.name ?? "TBA"} />
-        <StatusCard icon={CheckCircle2} label="Registration status" value={registrationStatus.isOpen ? "Open" : team.status === "verified" ? "Verified" : "Pending"} tone={team.status === "verified" ? "good" : undefined} />
-        <StatusCard icon={Clock} label="Next deadline" value={upcomingDeadlines[0] ? new Date(upcomingDeadlines[0].ends_at!).toLocaleDateString() : "TBA"} />
-        <StatusCard icon={ClipboardCheck} label="Submission status" value={submissionStatusSummary} />
-      </div>
+      <Reveal>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatusCard icon={Trophy} label="Current round" value={currentRound?.name ?? "TBA"} />
+          <StatusCard icon={CheckCircle2} label="Registration status" value={registrationStatus.isOpen ? "Open" : team.status === "verified" ? "Verified" : "Pending"} tone={team.status === "verified" ? "good" : undefined} />
+          <StatusCard icon={Clock} label="Next deadline" value={upcomingDeadlines[0] ? formatDate(upcomingDeadlines[0].ends_at!) : "TBA"} />
+          <StatusCard icon={ClipboardCheck} label="Submission status" value={submissionStatusSummary} />
+        </div>
+      </Reveal>
 
       <Card className={requiredActions.length > 0 ? "border-rose/40 bg-rose/5" : undefined}>
         <CardHeader>
@@ -106,6 +122,7 @@ export default async function PortalDashboardPage() {
         </CardContent>
       </Card>
 
+      <Reveal delay={0.05}>
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader className="flex-row items-center justify-between space-y-0">
@@ -147,7 +164,7 @@ export default async function PortalDashboardPage() {
                   <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
                   <div>
                     <p className="font-medium">{r.name}</p>
-                    <p className="text-muted-foreground">{new Date(r.ends_at!).toLocaleString()}</p>
+                    <p className="text-muted-foreground">{formatDateTime(r.ends_at!)}</p>
                   </div>
                 </div>
               ))
@@ -155,7 +172,9 @@ export default async function PortalDashboardPage() {
           </CardContent>
         </Card>
       </div>
+      </Reveal>
 
+      <Reveal delay={0.1}>
       <div className="grid gap-6 lg:grid-cols-3">
         <Card>
           <CardHeader className="flex-row items-center justify-between space-y-0">
@@ -168,7 +187,7 @@ export default async function PortalDashboardPage() {
                   <Megaphone className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
                   <div>
                     <p className="font-medium">{a.title}</p>
-                    <p className="text-xs text-muted-foreground">{new Date(a.published_at).toLocaleDateString()}</p>
+                    <p className="text-xs text-muted-foreground">{formatDate(a.published_at)}</p>
                   </div>
                 </div>
               ))
@@ -196,7 +215,10 @@ export default async function PortalDashboardPage() {
 
         <Card>
           <CardHeader className="flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-base">Notifications</CardTitle>
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-base">Notifications</CardTitle>
+              {unreadCount > 0 && <Badge>{unreadCount} unread</Badge>}
+            </div>
             <Button variant="ghost" size="sm" asChild>
               <Link href="/portal/notifications">
                 View all <ArrowUpRight className="h-3.5 w-3.5" />
@@ -219,6 +241,7 @@ export default async function PortalDashboardPage() {
           </CardContent>
         </Card>
       </div>
+      </Reveal>
     </div>
   );
 }

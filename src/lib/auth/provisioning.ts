@@ -37,6 +37,62 @@ export function generateInviteToken(): string {
   return randomBytes(32).toString("hex");
 }
 
+export type CreateAdminWithPasswordResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+// Alternative to sendAccountSetupLink(): the super admin types an initial
+// password directly instead of relying on Supabase's invite-link email
+// (which may not be configured/delivered in this environment). Safe to
+// grant the role immediately here - unlike the token/email-proof flow in
+// acceptAdminInvite(), the super admin is a trusted actor directly
+// asserting "this email should have this role" right now, not a claim made
+// by an unauthenticated registration flow. The account is forced to change
+// this password on first login, same as participant temporary passwords.
+export async function createAdminAccountWithPassword(params: {
+  email: string;
+  password: string;
+  role: "event_admin" | "reviewer";
+  eventId: string;
+  invitedBy: string;
+}): Promise<CreateAdminWithPasswordResult> {
+  const email = params.email.toLowerCase().trim();
+  if (params.password.length < 8) {
+    return { ok: false, error: "Initial password must be at least 8 characters." };
+  }
+
+  const admin = createAdminClient();
+
+  const { data: existingProfile } = await admin.from("profiles").select("id").eq("email", email).maybeSingle();
+  let userId = (existingProfile as { id: string } | null)?.id ?? null;
+
+  if (userId) {
+    const { error } = await admin.auth.admin.updateUserById(userId, { password: params.password });
+    if (error) return { ok: false, error: error.message || "Could not set the initial password." };
+  } else {
+    const { data, error } = await admin.auth.admin.createUser({
+      email,
+      password: params.password,
+      email_confirm: true,
+    });
+    if (error || !data.user) return { ok: false, error: error?.message ?? "Could not create account." };
+    userId = data.user.id;
+  }
+
+  const { error: flagError } = await admin.from("profiles").update({ must_change_password: true }).eq("id", userId);
+  if (flagError) return { ok: false, error: "Account created, but could not require a password change. Try again." };
+
+  const { error: grantError } = await admin
+    .from("event_admins")
+    .upsert(
+      { event_id: params.eventId, user_id: userId, role: params.role, created_by: params.invitedBy },
+      { onConflict: "event_id,user_id,role" },
+    );
+  if (grantError) return { ok: false, error: "Account created, but could not grant the role. Try again." };
+
+  return { ok: true };
+}
+
 export type AcceptInviteResult =
   | { ok: true; role: "super_admin" | "event_admin" | "reviewer"; scope: "platform" | "event"; eventId: string | null }
   | { ok: false; error: string };

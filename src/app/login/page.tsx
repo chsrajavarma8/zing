@@ -12,6 +12,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { AlertCircle, ArrowLeft, KeyRound, Loader2, LogIn, ShieldCheck } from "lucide-react";
 import { signIn } from "./actions";
+import { Reveal } from "@/components/motion/reveal";
 
 export default function LoginPage() {
   return (
@@ -48,6 +49,7 @@ function LoginPageInner() {
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-16">
 
+      <Reveal y={12} className="w-full max-w-md">
       <Card className="card-glow relative w-full max-w-md">
         <CardHeader>
           <Link
@@ -121,13 +123,13 @@ function LoginPageInner() {
                   </p>
                   <ul className="list-inside list-disc space-y-1">
                     <li>First 2 letters of your team name</li>
-                    <li>First 5 letters of your own name</li>
-                    <li>Your date of birth as MMDD (month, then day)</li>
+                    <li>First 3 letters of your own name</li>
+                    <li>Your 4-digit birth year</li>
                   </ul>
                   <p>
                     All lowercase, spaces and punctuation removed. Example: team <strong>Zing</strong>, name{" "}
-                    <strong>Rajavarma</strong>, DOB 14 September →{" "}
-                    <code className="rounded bg-muted px-1 py-0.5 font-mono">zirajav0914</code>.
+                    <strong>Rajavarma</strong>, born <strong>1998</strong> →{" "}
+                    <code className="rounded bg-muted px-1 py-0.5 font-mono">ziraj1998</code>.
                   </p>
                   <p>
                     You&apos;ll be asked to set your own private password the first time you sign in. We never
@@ -148,6 +150,7 @@ function LoginPageInner() {
           </form>
         </CardContent>
       </Card>
+      </Reveal>
     </main>
   );
 }

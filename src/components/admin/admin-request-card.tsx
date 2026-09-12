@@ -1,15 +1,17 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { Loader2, Send } from "lucide-react";
+import { Loader2, Send, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
-import { replyToRequest } from "@/app/admin/requests/actions";
+import { replyToRequest, resolveRequest } from "@/app/admin/requests/actions";
+import { formatDateTime } from "@/lib/date";
 import type { RequestRow, RequestType } from "@/types/database";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
@@ -27,6 +29,12 @@ const STATUS_LABEL: Record<string, string> = {
   resolved: "Resolved",
   rejected: "Rejected",
 };
+
+// "Resolved" isn't a selectable status here - selecting it wouldn't just
+// update the row, it deletes it (see the dedicated Resolve button below),
+// so it's kept out of the ordinary status dropdown to avoid a surprising
+// side effect on a plain status change + Send.
+const SELECTABLE_STATUSES: RequestRow["status"][] = ["open", "in_progress", "awaiting_response", "rejected"];
 
 const TYPE_LABEL: Record<RequestType, string> = {
   general: "General query",
@@ -52,9 +60,11 @@ export function AdminRequestCard({
   eventId: string;
   messages: Message[];
 }) {
+  const router = useRouter();
   const [reply, setReply] = useState("");
   const [status, setStatus] = useState(request.status);
   const [busy, setBusy] = useState(false);
+  const [resolving, setResolving] = useState(false);
 
   async function submit() {
     setBusy(true);
@@ -68,6 +78,18 @@ export function AdminRequestCard({
     setReply("");
   }
 
+  async function resolve() {
+    setResolving(true);
+    const result = await resolveRequest(request.id, eventId);
+    setResolving(false);
+    if (!result.ok) {
+      toast.error(result.error ?? "Could not resolve this request.");
+      return;
+    }
+    toast.success("Request resolved and removed.");
+    router.refresh();
+  }
+
   return (
     <Card>
       <CardHeader>
@@ -78,7 +100,7 @@ export function AdminRequestCard({
         <CardTitle className="text-base">{request.subject}</CardTitle>
         <CardDescription>
           Reference: {request.reference_id} · {request.teams?.team_name} ({request.teams?.reference_id}) ·{" "}
-          {new Date(request.created_at).toLocaleString()}
+          {formatDateTime(request.created_at)}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
@@ -99,7 +121,7 @@ export function AdminRequestCard({
             <Separator />
             {messages.map((m) => (
               <div key={m.id} className={`rounded-md border p-2 ${m.is_admin ? "bg-primary/5" : "bg-muted/30"}`}>
-                <p className="text-xs font-medium text-muted-foreground">{m.is_admin ? "Organizer" : "Team"} · {new Date(m.created_at).toLocaleString()}</p>
+                <p className="text-xs font-medium text-muted-foreground">{m.is_admin ? "Organizer" : "Team"} · {formatDateTime(m.created_at)}</p>
                 <p>{m.message}</p>
               </div>
             ))}
@@ -113,17 +135,23 @@ export function AdminRequestCard({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="open">Open</SelectItem>
-              <SelectItem value="in_progress">In review</SelectItem>
-              <SelectItem value="awaiting_response">Awaiting your response</SelectItem>
-              <SelectItem value="resolved">Resolved</SelectItem>
-              <SelectItem value="rejected">Rejected</SelectItem>
+              {SELECTABLE_STATUSES.map((value) => (
+                <SelectItem key={value} value={value}>
+                  {STATUS_LABEL[value]}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
-          <Button size="sm" onClick={submit} disabled={busy}>
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            Send
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={resolve} disabled={busy || resolving}>
+              {resolving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              Resolve
+            </Button>
+            <Button size="sm" onClick={submit} disabled={busy || resolving}>
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              Send
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>

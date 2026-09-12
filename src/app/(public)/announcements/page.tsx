@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Megaphone, Pin } from "lucide-react";
 import { pageMetadata } from "@/lib/page-metadata";
+import { formatDateTime } from "@/lib/date";
 
 export const metadata = pageMetadata({
   title: "Announcements",
@@ -49,7 +50,7 @@ export default async function AnnouncementsPage() {
                   )}
                 </div>
                 <CardTitle className="text-lg">{a.title}</CardTitle>
-                <CardDescription>{new Date(a.published_at).toLocaleString()}</CardDescription>
+                <CardDescription>{formatDateTime(a.published_at)}</CardDescription>
               </CardHeader>
               <CardContent className="text-sm text-muted-foreground">{a.body}</CardContent>
             </Card>

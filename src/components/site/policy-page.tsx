@@ -2,6 +2,7 @@ import { PageHeader } from "@/components/site/page-header";
 import { Markdown } from "@/components/site/markdown";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertTriangle } from "lucide-react";
+import { formatDateLong } from "@/lib/date";
 
 interface Policy {
   version: string;
@@ -12,7 +13,7 @@ interface Policy {
 export function PolicyPage({ eyebrow, title, policy }: { eyebrow: string; title: string; policy: Policy | null }) {
   const isDraft = policy?.version?.startsWith("draft");
   const description = policy
-    ? `Version ${policy.version}${policy.published_at ? ` · Effective ${new Date(policy.published_at).toLocaleDateString(undefined, { dateStyle: "long" })}` : ""}`
+    ? `Version ${policy.version}${policy.published_at ? ` · Effective ${formatDateLong(policy.published_at)}` : ""}`
     : undefined;
 
   return (

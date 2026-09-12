@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Download, Search } from "lucide-react";
 import Link from "next/link";
+import { formatDate } from "@/lib/date";
 import type { Team } from "@/types/database";
 
 const PAGE_SIZE = 25;
@@ -114,7 +115,7 @@ export default async function RegistrationsPage({
                           {t.status}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{new Date(t.created_at).toLocaleDateString()}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{formatDate(t.created_at)}</TableCell>
                     </TableRow>
                   );
                 })}

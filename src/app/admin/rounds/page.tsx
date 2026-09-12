@@ -14,8 +14,8 @@ export default async function AdminRoundsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Rounds & Exams</h1>
-        <p className="text-muted-foreground">Configure the Minor, Intermediate, and Major rounds.</p>
+        <h1 className="text-2xl font-bold">Rounds</h1>
+        <p className="text-muted-foreground">Set each round&apos;s activation and submission window.</p>
       </div>
       <div className="space-y-4">
         {((rounds as unknown as Round[] | null) ?? []).map((r) => (

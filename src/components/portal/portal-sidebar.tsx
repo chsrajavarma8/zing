@@ -11,7 +11,6 @@ import {
   UserRound,
   Users,
   CalendarClock,
-  FileQuestion,
   FolderGit2,
   Trophy,
   Inbox,
@@ -24,6 +23,7 @@ import {
   Sparkles,
   LifeBuoy,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 
@@ -32,7 +32,6 @@ const LINKS = [
   { href: "/portal/profile", label: "Profile", icon: UserRound },
   { href: "/portal/team", label: "Team", icon: Users },
   { href: "/portal/schedule", label: "Schedule", icon: CalendarClock },
-  { href: "/portal/exam", label: "Screening Exam", icon: FileQuestion },
   { href: "/portal/submission", label: "Submission", icon: FolderGit2 },
   { href: "/portal/results", label: "My Results", icon: Trophy },
   { href: "/portal/notifications", label: "Notifications", icon: Bell },
@@ -42,7 +41,7 @@ const LINKS = [
   { href: "/portal/feedback", label: "Feedback", icon: MessageSquareHeart },
 ];
 
-function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
+function NavLinks({ onNavigate, unreadCount = 0 }: { onNavigate?: () => void; unreadCount?: number }) {
   const pathname = usePathname();
   return (
     <nav className="flex flex-col gap-0.5">
@@ -55,14 +54,21 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
             href={link.href}
             onClick={onNavigate}
             className={cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-burgundy/65 transition-all duration-200",
+              "flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-burgundy/65 transition-all duration-200",
               active
                 ? "bg-primary text-primary-foreground shadow-sm"
                 : "hover:bg-primary/8 hover:text-burgundy",
             )}
           >
-            <Icon className="h-4 w-4 shrink-0" />
-            {link.label}
+            <span className="flex items-center gap-3">
+              <Icon className="h-4 w-4 shrink-0" />
+              {link.label}
+            </span>
+            {link.href === "/portal/notifications" && unreadCount > 0 && (
+              <Badge className="h-5 min-w-5 justify-center px-1.5" variant={active ? "secondary" : "default"}>
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </Badge>
+            )}
           </Link>
         );
       })}
@@ -88,7 +94,7 @@ function SignOutButton() {
   );
 }
 
-export function PortalSidebar({ eventName }: { eventName: string }) {
+export function PortalSidebar({ eventName, unreadCount = 0 }: { eventName: string; unreadCount?: number }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -99,7 +105,7 @@ export function PortalSidebar({ eventName }: { eventName: string }) {
           <span className="truncate">{eventName}</span>
         </Link>
         <div className="flex-1 overflow-y-auto">
-          <NavLinks />
+          <NavLinks unreadCount={unreadCount} />
         </div>
         <div className="space-y-1 border-t border-primary/12 pt-3">
           <Link
@@ -119,14 +125,17 @@ export function PortalSidebar({ eventName }: { eventName: string }) {
         </Link>
         <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Open menu">
+            <Button variant="ghost" size="icon" aria-label="Open menu" className="relative">
               <Menu className="h-5 w-5" />
+              {unreadCount > 0 && (
+                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-primary" aria-hidden />
+              )}
             </Button>
           </SheetTrigger>
           <SheetContent side="left" className="w-72 bg-cream">
             <SheetTitle className="px-4 pt-4">Menu</SheetTitle>
             <div className="mt-4 px-4">
-              <NavLinks onNavigate={() => setOpen(false)} />
+              <NavLinks onNavigate={() => setOpen(false)} unreadCount={unreadCount} />
               <div className="mt-4 space-y-1 border-t border-primary/12 pt-3">
                 <Link
                   href="/contact"

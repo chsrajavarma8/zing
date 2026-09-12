@@ -114,12 +114,26 @@ export async function resetParticipantAccess(teamMemberId: string, eventId: stri
 // 0020_team_delete_support.sql). Irreversible - the confirmation dialog on
 // the client side is the only thing standing between a click and permanent
 // data loss, so this is deliberately not exposed as a one-click action.
+//
+// Uses the service-role client for the delete itself (authorization is
+// fully re-verified above via canManage - not delegated to RLS): the
+// cascade reaches several audit/log-style tables (consents, score_audit,
+// final_score_audit, submission_history, id_cards, exam_attempts, ...)
+// that deliberately have no client-facing delete RLS policy, since no
+// participant or reviewer session should ever be able to delete an audit
+// row directly. Running this as the ordinary authenticated admin session
+// (as before) hit exactly that: RLS silently blocked the cascade into
+// those tables, the whole statement rolled back, and the only symptom was
+// a generic "Could not delete team" error. Same pattern already used for
+// the registration-rollback team delete in src/app/api/register/route.ts.
+// A single DELETE statement (cascades included) is one atomic transaction,
+// so a failure here can never leave a partially-deleted team behind.
 export async function deleteTeam(teamId: string, eventId: string) {
   const ctx = await getAdminContext();
   if (!ctx || !canManage(ctx)) return { ok: false, error: "Not authorized." };
 
-  const supabase = await createClient();
-  const { data: team } = await supabase
+  const admin = createAdminClient();
+  const { data: team } = await admin
     .from("teams")
     .select("team_name, reference_id")
     .eq("id", teamId)
@@ -127,8 +141,12 @@ export async function deleteTeam(teamId: string, eventId: string) {
     .maybeSingle();
   if (!team) return { ok: false, error: "Team not found." };
 
-  const { error } = await supabase.from("teams").delete().eq("id", teamId);
-  if (error) return { ok: false, error: "Could not delete team." };
+  const { error, count } = await admin.from("teams").delete({ count: "exact" }).eq("id", teamId).eq("event_id", eventId);
+  if (error) {
+    console.error("[deleteTeam]", error);
+    return { ok: false, error: "Could not delete team. Please try again or contact support if this keeps happening." };
+  }
+  if (!count) return { ok: false, error: "Team not found." };
 
   await logAudit({
     actorProfileId: ctx.user.userId,
@@ -140,6 +158,7 @@ export async function deleteTeam(teamId: string, eventId: string) {
   });
 
   revalidatePath("/admin/registrations");
+  revalidatePath("/admin");
   return { ok: true };
 }
 

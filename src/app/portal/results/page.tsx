@@ -20,9 +20,9 @@ export default async function MyResultsPage() {
     supabase.from("judging_criteria").select("*").in("round_id", roundIds.length ? roundIds : ["00000000-0000-0000-0000-000000000000"]).order("order_index"),
     // The comments column is masked server-side by this view unless the
     // round's participant publication explicitly marked reviewer feedback
-    // visible - RLS on the base `scores` table is row-level only and can't
-    // hide just that column (see 0017_security_hardening.sql).
-    supabase.from("scores_participant_visible").select("*").eq("team_id", portal.team.id),
+    // visible - RLS on the base `final_scores` table is row-level only and
+    // can't hide just that column (see 0026_final_scores.sql).
+    supabase.from("final_scores_participant_visible").select("*").eq("team_id", portal.team.id),
     supabase.from("qualification_status").select("*").eq("team_id", portal.team.id),
   ]);
 
@@ -39,8 +39,8 @@ export default async function MyResultsPage() {
     criteriaByRound.set(c.round_id, list);
   }
 
-  const scoresByRound = new Map<string, { criterion_id: string; marks: number; comments: string | null }[]>();
-  for (const s of (scores as unknown as { round_id: string; criterion_id: string; marks: number; comments: string | null }[] | null) ?? []) {
+  const scoresByRound = new Map<string, { score: number; comments: string | null }[]>();
+  for (const s of (scores as unknown as { round_id: string; score: number; comments: string | null }[] | null) ?? []) {
     const list = scoresByRound.get(s.round_id) ?? [];
     list.push(s);
     scoresByRound.set(s.round_id, list);
@@ -75,12 +75,8 @@ export default async function MyResultsPage() {
             );
           }
 
-          // Multiple judges may score the same criterion - sum per criterion, same as the scoreboard.
-          const marksByCriterion = new Map<string, number>();
-          for (const s of roundScores) {
-            marksByCriterion.set(s.criterion_id, (marksByCriterion.get(s.criterion_id) ?? 0) + s.marks);
-          }
-          const total = Array.from(marksByCriterion.values()).reduce((a, b) => a + b, 0);
+          // One final score per judge - average across judges, same rule as the scoreboard.
+          const total = roundScores.length > 0 ? roundScores.reduce((sum, s) => sum + s.score, 0) / roundScores.length : null;
           const feedbackComments = pub.feedbackVisible ? roundScores.map((s) => s.comments).filter(Boolean) : [];
 
           return (
@@ -95,26 +91,27 @@ export default async function MyResultsPage() {
                 {qual?.rank && <CardDescription>Rank: {qual.rank}</CardDescription>}
               </CardHeader>
               <CardContent className="space-y-4">
-                {roundCriteria.length > 0 ? (
-                  <div className="space-y-2">
+                {roundCriteria.length > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground">Marking criteria</p>
                     {roundCriteria.map((c) => (
                       <div key={c.id} className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">{c.name}</span>
-                        <span className="font-mono">
-                          {marksByCriterion.get(c.id)?.toFixed(1) ?? "N/A"} / {c.max_marks}
-                        </span>
+                        <span className="text-xs text-muted-foreground">max {c.max_marks} marks · weight {c.weight}</span>
                       </div>
                     ))}
                     <Separator />
-                    <div className="flex items-center justify-between font-semibold">
-                      <span className="flex items-center gap-1.5">
-                        <Trophy className="h-4 w-4 text-primary" /> Total
-                      </span>
-                      <span className="font-mono">{total.toFixed(1)}</span>
-                    </div>
+                  </div>
+                )}
+                {total !== null ? (
+                  <div className="flex items-center justify-between font-semibold">
+                    <span className="flex items-center gap-1.5">
+                      <Trophy className="h-4 w-4 text-primary" /> Final score
+                    </span>
+                    <span className="font-mono">{total.toFixed(1)} / 100</span>
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">No criterion-level scores recorded for this round.</p>
+                  <p className="text-sm text-muted-foreground">No score recorded for this round yet.</p>
                 )}
 
                 {feedbackComments.length > 0 && (

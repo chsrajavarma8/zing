@@ -11,6 +11,7 @@ export default async function NotificationsPage() {
     .from("notification_recipients")
     .select("id, read_at, channel, notifications(id, title, message, priority, action_link, created_at)")
     .eq("profile_id", portal.userId)
+    .eq("channel", "in_app")
     .order("created_at", { ascending: false });
 
   type Row = {

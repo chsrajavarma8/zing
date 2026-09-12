@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getUserContext } from "@/lib/auth/session";
 import { getPortalContext } from "@/lib/portal/data";
+import { createClient } from "@/lib/supabase/server";
 import { PortalSidebar } from "@/components/portal/portal-sidebar";
 import { SkipLink } from "@/components/site/skip-link";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -45,10 +46,18 @@ export default async function PortalLayout({ children }: { children: React.React
     );
   }
 
+  const supabase = await createClient();
+  const { count } = await supabase
+    .from("notification_recipients")
+    .select("id", { count: "exact", head: true })
+    .eq("profile_id", portal.userId)
+    .eq("channel", "in_app")
+    .is("read_at", null);
+
   return (
     <div className="flex min-h-screen">
       <SkipLink />
-      <PortalSidebar eventName={portal.event.name} />
+      <PortalSidebar eventName={portal.event.name} unreadCount={count ?? 0} />
       <main id="main-content" className="flex-1 overflow-x-hidden px-4 py-6 sm:px-8 sm:py-8">
         <div className="mx-auto max-w-5xl">{children}</div>
       </main>

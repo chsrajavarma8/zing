@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { formatDateTime } from "@/lib/date";
 
 const PAGE_SIZE = 50;
 
@@ -46,7 +47,7 @@ export default async function AuditLogsPage({ searchParams }: { searchParams: Pr
                 | null
               )?.map((l) => (
                 <TableRow key={l.id}>
-                  <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{new Date(l.created_at).toLocaleString()}</TableCell>
+                  <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{formatDateTime(l.created_at)}</TableCell>
                   <TableCell className="text-sm">{l.profiles?.full_name || l.profiles?.email || "System"}</TableCell>
                   <TableCell>
                     <Badge variant="outline">{l.action}</Badge>

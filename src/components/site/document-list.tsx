@@ -1,4 +1,5 @@
 import { FileText } from "lucide-react";
+import { formatDate } from "@/lib/date";
 import type { Document } from "@/types/database";
 
 export function DocumentList({ documents }: { documents: Document[] }) {
@@ -18,7 +19,7 @@ export function DocumentList({ documents }: { documents: Document[] }) {
               <p className="font-medium">{doc.title}</p>
               <p className="text-xs text-muted-foreground">
                 v{doc.version}
-                {doc.published_at && ` · Published ${new Date(doc.published_at).toLocaleDateString()}`}
+                {doc.published_at && ` · Published ${formatDate(doc.published_at)}`}
               </p>
             </div>
             <span className="text-xs text-primary underline underline-offset-4">Read document</span>

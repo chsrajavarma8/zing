@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { Users, FolderGit2, Inbox, Bell, TrendingUp } from "lucide-react";
+import { Reveal } from "@/components/motion/reveal";
 
 export default async function AdminDashboardPage() {
   const ctx = await getAdminContext();
@@ -13,7 +14,7 @@ export default async function AdminDashboardPage() {
   const [{ data: statsRows }, { count: pendingSubmissionsCount }, { count: openRequestsCount }, { count: unverifiedCount }] =
     await Promise.all([
       supabase.rpc("event_registration_stats", { eid: ctx.event.id }),
-      supabase.from("submissions").select("id", { count: "exact", head: true }).eq("review_status", "pending"),
+      supabase.from("submissions").select("id", { count: "exact", head: true }).eq("review_status", "pending_review"),
       supabase.from("requests").select("id", { count: "exact", head: true }).eq("event_id", ctx.event.id).eq("status", "open"),
       supabase
         .from("team_members")
@@ -40,13 +41,16 @@ export default async function AdminDashboardPage() {
         </Link>
       </div>
 
+      <Reveal>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard icon={Users} label="Participants" value={stats?.participant_count ?? 0} />
         <StatCard icon={TrendingUp} label="Teams" value={stats?.team_count ?? 0} />
         <StatCard icon={FolderGit2} label="Pending submission reviews" value={pendingSubmissionsCount ?? 0} href="/admin/submissions" />
         <StatCard icon={Inbox} label="Open requests" value={openRequestsCount ?? 0} href="/admin/requests" />
       </div>
+      </Reveal>
 
+      <Reveal delay={0.05}>
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
@@ -69,7 +73,7 @@ export default async function AdminDashboardPage() {
           <CardContent className="grid gap-2">
             {[
               ["/admin/registrations", "Manage registrations & teams"],
-              ["/admin/rounds", "Configure rounds & exams"],
+              ["/admin/rounds", "Configure rounds & submission windows"],
               ["/admin/judging", "Enter & publish scores"],
               ["/admin/content", "Edit homepage, FAQ, policies"],
               ["/admin/notifications", "Send a notification"],
@@ -81,6 +85,7 @@ export default async function AdminDashboardPage() {
           </CardContent>
         </Card>
       </div>
+      </Reveal>
     </div>
   );
 }

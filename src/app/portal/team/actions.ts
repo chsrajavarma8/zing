@@ -3,17 +3,34 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { participantSchema, validateWhatsapp } from "@/lib/validations/registration";
+import { normalizePhoneInput } from "@/lib/phone";
 import { provisionParticipantAccount } from "@/lib/auth/participant-provisioning";
 import { requirePasswordChanged } from "@/lib/auth/guards";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-async function assertBeforeDeadline(eventId: string) {
+// Gates every team-mutating action (add/remove member, rename, transfer
+// lead, delegate access) behind BOTH locks: registration_close_at (no new
+// registrations/changes after registration closes) and the later,
+// independent team_lock_at (team changes freeze once the hackathon starts,
+// per req. #5 - distinct from registration closing, since organizers may
+// want a gap between the two). Submissions are NOT gated by this - an open
+// round submission window must keep working after either lock (see
+// src/app/portal/submission/actions.ts, which only checks the round window).
+async function assertTeamMutable(eventId: string): Promise<string | null> {
   const supabase = await createClient();
-  const { data: event } = await supabase.from("events").select("registration_close_at").eq("id", eventId).maybeSingle();
-  const closeAt = (event as unknown as { registration_close_at: string | null } | null)?.registration_close_at;
-  if (closeAt && Date.now() > Date.parse(closeAt)) {
-    return "Team membership changes are locked — the registration deadline has passed.";
+  const { data: event } = await supabase
+    .from("events")
+    .select("registration_close_at, team_lock_at")
+    .eq("id", eventId)
+    .maybeSingle();
+  const e = event as unknown as { registration_close_at: string | null; team_lock_at: string | null } | null;
+  const now = Date.now();
+  if (e?.team_lock_at && now > Date.parse(e.team_lock_at)) {
+    return "Team changes are locked — the hackathon has started.";
+  }
+  if (e?.registration_close_at && now > Date.parse(e.registration_close_at)) {
+    return "Team changes are locked — the registration deadline has passed.";
   }
   return null;
 }
@@ -25,7 +42,7 @@ const newMemberSchema = participantSchema.omit({ role: true }).superRefine((m, c
 });
 
 export async function addTeamMember(teamId: string, eventId: string, input: z.infer<typeof newMemberSchema>) {
-  const deadlineError = await assertBeforeDeadline(eventId);
+  const deadlineError = await assertTeamMutable(eventId);
   if (deadlineError) return { ok: false, error: deadlineError };
 
   const parsed = newMemberSchema.safeParse(input);
@@ -62,7 +79,7 @@ export async function addTeamMember(teamId: string, eventId: string, input: z.in
       roll_number: m.rollNumber,
       email: m.email.toLowerCase(),
       mobile: m.mobile,
-      whatsapp: m.whatsappSameAsMobile ? m.mobile : m.whatsapp,
+      whatsapp: m.whatsappSameAsMobile ? m.mobile : normalizePhoneInput(m.whatsapp),
       whatsapp_same_as_mobile: m.whatsappSameAsMobile,
       gender: m.gender || null,
       consent_accepted: true,
@@ -101,7 +118,7 @@ export async function addTeamMember(teamId: string, eventId: string, input: z.in
 }
 
 export async function removeTeamMember(memberId: string, eventId: string) {
-  const deadlineError = await assertBeforeDeadline(eventId);
+  const deadlineError = await assertTeamMutable(eventId);
   if (deadlineError) return { ok: false, error: deadlineError };
 
   const supabase = await createClient();
@@ -109,6 +126,71 @@ export async function removeTeamMember(memberId: string, eventId: string) {
   const { error } = await supabase.from("team_members").delete().eq("id", memberId).neq("role", "lead");
 
   if (error) return { ok: false, error: "Could not remove member." };
+  revalidatePath("/portal/team");
+  return { ok: true };
+}
+
+export async function renameTeam(teamId: string, eventId: string, teamName: string) {
+  const deadlineError = await assertTeamMutable(eventId);
+  if (deadlineError) return { ok: false, error: deadlineError };
+
+  const trimmed = teamName.trim();
+  if (trimmed.length < 2 || trimmed.length > 120) {
+    return { ok: false, error: "Enter a team name between 2 and 120 characters." };
+  }
+
+  const supabase = await createClient();
+  // RLS teams_update requires the caller to be the team's lead (or staff).
+  const { error } = await supabase.from("teams").update({ team_name: trimmed }).eq("id", teamId);
+  if (error) return { ok: false, error: "Could not rename team." };
+
+  revalidatePath("/portal/team");
+  revalidatePath("/portal");
+  return { ok: true };
+}
+
+// Runs the security-definer transfer_team_lead() RPC (0022_team_lead_transfer_and_delegate.sql),
+// which re-verifies server-side that the caller is the current lead and
+// that the target is an actual member of this team before flipping roles -
+// this app-layer check is only for a clean early error message, not the
+// real authorization boundary.
+export async function transferTeamLead(teamId: string, eventId: string, newLeadMemberId: string) {
+  const deadlineError = await assertTeamMutable(eventId);
+  if (deadlineError) return { ok: false, error: deadlineError };
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("transfer_team_lead", {
+    p_team_id: teamId,
+    p_new_lead_member_id: newLeadMemberId,
+  });
+  if (error) return { ok: false, error: error.message || "Could not transfer leadership." };
+
+  revalidatePath("/portal/team");
+  revalidatePath("/portal");
+  return { ok: true };
+}
+
+export async function setSubmissionDelegate(teamId: string, eventId: string, memberId: string | null) {
+  const deadlineError = await assertTeamMutable(eventId);
+  if (deadlineError) return { ok: false, error: deadlineError };
+
+  const supabase = await createClient();
+
+  if (memberId) {
+    const { data: member } = await supabase
+      .from("team_members")
+      .select("id, team_id, role")
+      .eq("id", memberId)
+      .maybeSingle();
+    const m = member as unknown as { id: string; team_id: string; role: string } | null;
+    if (!m || m.team_id !== teamId) return { ok: false, error: "That person is not a member of this team." };
+    if (m.role === "lead") return { ok: false, error: "The lead already has full submission access." };
+  }
+
+  // RLS teams_update requires the caller to be the team's lead (or staff).
+  const { error } = await supabase.from("teams").update({ submission_delegate_member_id: memberId }).eq("id", teamId);
+  if (error) return { ok: false, error: "Could not update delegate access." };
+
   revalidatePath("/portal/team");
   return { ok: true };
 }

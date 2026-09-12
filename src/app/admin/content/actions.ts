@@ -3,22 +3,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { logAudit } from "@/lib/audit";
 import { revalidatePath } from "next/cache";
-import type { Json } from "@/types/database";
-
-export async function saveContentBlock(eventId: string, key: string, content: Json) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "Not signed in." };
-
-  const { error } = await supabase.from("content_blocks").upsert({ event_id: eventId, key, content, updated_by: user.id }, { onConflict: "event_id,key" });
-  if (error) return { ok: false, error: "Could not save." };
-  await logAudit({ actorProfileId: user.id, eventId, action: "save_content_block", entityType: "content_blocks", entityId: key, after: content });
-  revalidatePath("/admin/content");
-  revalidatePath("/");
-  return { ok: true };
-}
 
 export async function upsertFaq(eventId: string, input: { id?: string; question: string; answer: string; orderIndex: number; published: boolean }) {
   const supabase = await createClient();

@@ -11,7 +11,6 @@ import { useBackgroundMotionPreference } from "@/lib/use-background-motion-prefe
 type Intensity = "full" | "soft" | "minimal" | "static";
 
 function intensityFor(pathname: string): Intensity {
-  if (pathname.startsWith("/portal/exam")) return "static";
   if (pathname.startsWith("/portal") || pathname.startsWith("/admin")) return "minimal";
   if (
     pathname.startsWith("/login") ||

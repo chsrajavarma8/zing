@@ -10,6 +10,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AlertTriangle, Loader2, UploadCloud } from "lucide-react";
 import { toast } from "sonner";
 import { publishPolicyVersion } from "@/app/admin/content/actions";
+import { formatDate } from "@/lib/date";
 
 interface Policy {
   id: string;
@@ -59,7 +60,7 @@ function PolicyTypeEditor({ eventId, type, label, policies }: { eventId: string;
         <CardDescription>{current ? `Current: v${current.version}` : "Not published yet"}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {current?.version.startsWith("draft") && (
+        {type === "rules" && current?.version.startsWith("draft") && (
           <Alert variant="destructive">
             <AlertTriangle className="h-4 w-4" />
             <AlertTitle>Draft content</AlertTitle>
@@ -80,7 +81,7 @@ function PolicyTypeEditor({ eventId, type, label, policies }: { eventId: string;
             {policies.map((p) => (
               <div key={p.id} className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Badge variant={p.is_current ? "default" : "outline"} className="text-[10px]">v{p.version}</Badge>
-                {p.published_at && new Date(p.published_at).toLocaleDateString()}
+                {p.published_at && formatDate(p.published_at)}
               </div>
             ))}
           </div>

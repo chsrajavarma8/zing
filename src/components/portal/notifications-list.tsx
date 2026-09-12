@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Bell, BellOff, CheckCheck } from "lucide-react";
 import { markNotificationRead, markAllNotificationsRead } from "@/app/portal/notifications/actions";
+import { formatDateTime } from "@/lib/date";
 
 interface Row {
   id: string;
@@ -80,7 +81,7 @@ export function NotificationsList({ items }: { items: Row[] }) {
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">{n.message}</p>
                 <div className="mt-2 flex items-center gap-3">
-                  <span className="text-xs text-muted-foreground">{new Date(n.created_at).toLocaleString()}</span>
+                  <span className="text-xs text-muted-foreground">{formatDateTime(n.created_at)}</span>
                   {n.action_link && (
                     <a href={n.action_link} className="text-xs text-primary underline underline-offset-4">
                       View

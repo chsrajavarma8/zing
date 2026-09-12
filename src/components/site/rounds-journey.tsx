@@ -8,14 +8,16 @@ import { Reveal } from "@/components/motion/reveal";
 import { useActiveSection } from "@/lib/use-active-section";
 import { cn } from "@/lib/utils";
 import { Clock, ArrowRight, ShieldCheck, Layers, Trophy } from "lucide-react";
-import type { Round, Exam } from "@/types/database";
+import { formatDateTime } from "@/lib/date";
+import { roundPhaseLabel } from "@/lib/rounds";
+import type { Round } from "@/types/database";
 
 const ROUND_META: Record<string, { title: string; body: string; icon: React.ComponentType<{ className?: string }>; button: string }> = {
   minor: {
-    title: "Minor Round: Talent Evaluation",
-    body: "Complete the online screening assessment during your assigned exam window. Review the instructions carefully before starting.",
+    title: "Talent Round",
+    body: "Submit a document showcasing your talent - upload a file or share a document link - during the submission window below.",
     icon: ShieldCheck,
-    button: "View exam instructions",
+    button: "View submission guidelines",
   },
   intermediate: {
     title: "Intermediate Round: Develop Your Solution",
@@ -32,7 +34,7 @@ const ROUND_META: Record<string, { title: string; body: string; icon: React.Comp
 };
 
 function fmt(v: string | null) {
-  return v ? new Date(v).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "To be announced";
+  return v ? formatDateTime(v) : "To be announced";
 }
 
 function Field({ label, value }: { label: string; value: string }) {
@@ -44,7 +46,7 @@ function Field({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function RoundsJourney({ rounds, exams }: { rounds: Round[]; exams: Exam[] }) {
+export function RoundsJourney({ rounds }: { rounds: Round[] }) {
   const ids = rounds.map((r) => `round-${r.id}`);
   const active = useActiveSection(ids);
 
@@ -80,10 +82,9 @@ export function RoundsJourney({ rounds, exams }: { rounds: Round[]; exams: Exam[
           horizontal scroll, never pinned on mobile. */}
       <div className="space-y-16">
         {rounds.map((round, i) => {
-          const exam = exams.find((e) => e.round_id === round.id);
           const meta = ROUND_META[round.key];
           const Icon = meta?.icon ?? Trophy;
-          const hasConfiguredDetails = Boolean(round.deliverables || round.evaluation_criteria || round.advancement_rules || exam);
+          const hasConfiguredDetails = Boolean(round.deliverables || round.evaluation_criteria || round.advancement_rules || round.starts_at || round.ends_at);
 
           return (
             <Reveal key={round.id} id={`round-${round.id}`} y={24}>
@@ -96,7 +97,7 @@ export function RoundsJourney({ rounds, exams }: { rounds: Round[]; exams: Exam[
               </div>
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <Badge>{`Round ${i + 1}`}</Badge>
-                <Badge variant="outline" className="capitalize">{round.status}</Badge>
+                <Badge variant="outline">{roundPhaseLabel(round)}</Badge>
               </div>
               <h2 className="mt-3 font-heading text-3xl font-bold">{meta?.title ?? round.name}</h2>
               <p className="mt-2 max-w-2xl text-base text-muted-foreground">{meta?.body ?? round.description}</p>
@@ -104,9 +105,11 @@ export function RoundsJourney({ rounds, exams }: { rounds: Round[]; exams: Exam[
               <div className="mt-6 space-y-4">
                 {round.key === "minor" ? (
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <Field label="Exam window" value={exam ? `${fmt(exam.starts_at)} – ${fmt(exam.ends_at)}` : "To be announced"} />
-                    <Field label="Duration" value={exam ? `${exam.duration_minutes} minutes` : "To be announced"} />
-                    <Field label="Format" value={exam ? "Online screening assessment" : "To be announced"} />
+                    <Field
+                      label="Submission window"
+                      value={round.starts_at || round.ends_at ? `${fmt(round.starts_at)} – ${fmt(round.ends_at)}` : "To be announced"}
+                    />
+                    <Field label="Accepted formats" value="Document upload (PDF, DOC, DOCX) or a shareable document link" />
                     <Field label="Qualification criteria" value={round.advancement_rules || "To be announced"} />
                   </div>
                 ) : round.key === "intermediate" ? (

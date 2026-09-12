@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { isGenderOption } from "@/lib/gender";
 import { revalidatePath } from "next/cache";
 
 export interface ProfileUpdateInput {
@@ -15,6 +16,10 @@ export interface ProfileUpdateInput {
 }
 
 export async function updateMyProfile(memberId: string, input: ProfileUpdateInput) {
+  if (input.gender && !isGenderOption(input.gender)) {
+    return { ok: false, error: "Choose a valid gender option." };
+  }
+
   const supabase = await createClient();
 
   // RLS (team_members_update: profile_id = auth.uid()) is the real guard here -

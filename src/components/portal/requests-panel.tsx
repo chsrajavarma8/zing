@@ -13,6 +13,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, Plus, Inbox, Info } from "lucide-react";
 import { toast } from "sonner";
 import { createRequest } from "@/app/portal/requests/actions";
+import { formatDateTime } from "@/lib/date";
 import type { RequestRow, RequestType, ExhibitDetails } from "@/types/database";
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
@@ -176,7 +177,7 @@ export function RequestsPanel({
                 </div>
                 <CardTitle className="text-base">{r.subject}</CardTitle>
                 <CardDescription>
-                  Reference: {r.reference_id} · {new Date(r.created_at).toLocaleString()}
+                  Reference: {r.reference_id} · {formatDateTime(r.created_at)}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
@@ -188,7 +189,7 @@ export function RequestsPanel({
                       {thread.map((m) => (
                         <div key={m.id} className={`rounded-md border p-2 ${m.is_admin ? "bg-primary/5" : "bg-muted/30"}`}>
                           <p className="text-xs font-medium text-muted-foreground">
-                            {m.is_admin ? "Organizer" : "You"} · {new Date(m.created_at).toLocaleString()}
+                            {m.is_admin ? "Organizer" : "You"} · {formatDateTime(m.created_at)}
                           </p>
                           <p>{m.message}</p>
                         </div>

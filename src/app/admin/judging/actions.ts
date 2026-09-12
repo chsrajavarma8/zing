@@ -30,22 +30,32 @@ export async function deleteCriterion(criterionId: string) {
   return { ok: true };
 }
 
-export async function saveScore(roundId: string, teamId: string, criterionId: string, marks: number) {
+// Req. #9: each judge enters exactly one final score per team per round,
+// 1-100 inclusive - validated here (frontend also validates in
+// FinalScoreInput) and again at the database boundary by the
+// final_scores.score check constraint (0026_final_scores.sql), so a direct
+// PostgREST/Supabase-JS call can't bypass the range either.
+export async function saveFinalScore(roundId: string, teamId: string, score: number, comments?: string) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "Not signed in." };
 
+  if (!Number.isFinite(score) || score < 1 || score > 100) {
+    return { ok: false, error: "Score must be between 1 and 100." };
+  }
+
   const { error } = await supabase
-    .from("scores")
+    .from("final_scores")
     .upsert(
-      { round_id: roundId, team_id: teamId, criterion_id: criterionId, judge_id: user.id, marks },
-      { onConflict: "round_id,team_id,criterion_id,judge_id" },
+      { round_id: roundId, team_id: teamId, judge_id: user.id, score, comments: comments?.trim() || null },
+      { onConflict: "round_id,team_id,judge_id" },
     );
 
   if (error) return { ok: false, error: "Could not save score." };
   revalidatePath("/admin/judging");
+  revalidatePath("/scoreboard");
   return { ok: true };
 }
 

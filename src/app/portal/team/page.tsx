@@ -6,9 +6,10 @@ export default async function TeamPage() {
   if (!portal) return null;
 
   const isLead = portal.membership.role === "lead";
-  const deadlinePassed = portal.event.registration_close_at
-    ? Date.now() > Date.parse(portal.event.registration_close_at)
-    : false;
+  const now = Date.now();
+  const deadlinePassed =
+    (portal.event.registration_close_at ? now > Date.parse(portal.event.registration_close_at) : false) ||
+    (portal.event.team_lock_at ? now > Date.parse(portal.event.team_lock_at) : false);
 
   return (
     <div className="space-y-6">

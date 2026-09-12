@@ -1,14 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
-import { Menu, Zap } from "lucide-react";
+import { LayoutDashboard, LogOut, Menu, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { registrationCtaLabel, type RegistrationStatus } from "@/lib/registration-status";
+import { createClient } from "@/lib/supabase/client";
 
 const NAV_LINKS = [
   { href: "/", label: "Home" },
@@ -35,6 +36,43 @@ function RegisterButton({ status, onClick, className }: { status: RegistrationSt
   );
 }
 
+function AccountControls({
+  dashboardHref,
+  className,
+  onNavigate,
+}: {
+  dashboardHref: string;
+  className?: string;
+  onNavigate?: () => void;
+}) {
+  const router = useRouter();
+  const [signingOut, setSigningOut] = useState(false);
+
+  return (
+    <div className={cn("flex items-center gap-2", className)}>
+      <Button variant="ghost" asChild onClick={onNavigate}>
+        <Link href={dashboardHref}>
+          <LayoutDashboard className="h-4 w-4" /> Dashboard
+        </Link>
+      </Button>
+      <Button
+        variant="outline"
+        disabled={signingOut}
+        onClick={async () => {
+          setSigningOut(true);
+          const supabase = createClient();
+          await supabase.auth.signOut();
+          onNavigate?.();
+          router.replace("/");
+          router.refresh();
+        }}
+      >
+        <LogOut className="h-4 w-4" /> Sign out
+      </Button>
+    </div>
+  );
+}
+
 // Fires only on the boolean edge (scrolled / not-scrolled), not on every
 // scroll pixel - avoids a state update per frame.
 function useScrolled(threshold = 12) {
@@ -52,10 +90,14 @@ export function SiteHeader({
   eventName = "Zing Hackathon",
   logoUrl,
   registrationStatus = null,
+  isSignedIn = false,
+  dashboardHref = "/portal",
 }: {
   eventName?: string;
   logoUrl?: string;
   registrationStatus?: RegistrationStatus | null;
+  isSignedIn?: boolean;
+  dashboardHref?: string;
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -121,10 +163,16 @@ export function SiteHeader({
           </nav>
 
           <div className="hidden items-center gap-2 lg:flex">
-            <Button variant="ghost" asChild>
-              <Link href="/login">Sign in</Link>
-            </Button>
-            <RegisterButton status={registrationStatus} />
+            {isSignedIn ? (
+              <AccountControls dashboardHref={dashboardHref} />
+            ) : (
+              <>
+                <Button variant="ghost" asChild>
+                  <Link href="/login">Sign in</Link>
+                </Button>
+                <RegisterButton status={registrationStatus} />
+              </>
+            )}
           </div>
 
           <div className="flex items-center gap-1 lg:hidden">
@@ -151,10 +199,16 @@ export function SiteHeader({
                     </Link>
                   ))}
                   <div className="mt-4 flex flex-col gap-2 border-t border-border pt-4">
-                    <Button variant="outline" asChild onClick={() => setOpen(false)}>
-                      <Link href="/login">Sign in</Link>
-                    </Button>
-                    <RegisterButton status={registrationStatus} onClick={() => setOpen(false)} />
+                    {isSignedIn ? (
+                      <AccountControls dashboardHref={dashboardHref} className="flex-col" onNavigate={() => setOpen(false)} />
+                    ) : (
+                      <>
+                        <Button variant="outline" asChild onClick={() => setOpen(false)}>
+                          <Link href="/login">Sign in</Link>
+                        </Button>
+                        <RegisterButton status={registrationStatus} onClick={() => setOpen(false)} />
+                      </>
+                    )}
                   </div>
                 </nav>
               </SheetContent>

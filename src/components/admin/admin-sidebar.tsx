@@ -27,13 +27,14 @@ import {
   Sparkles,
   MessageSquareHeart,
   KeyRound,
+  History,
 } from "lucide-react";
 
 const LINKS = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/events", label: "Event & Branding", icon: Settings2 },
   { href: "/admin/registrations", label: "Registrations", icon: Users },
-  { href: "/admin/rounds", label: "Rounds & Exams", icon: Trophy },
+  { href: "/admin/rounds", label: "Rounds", icon: Trophy },
   { href: "/admin/submissions", label: "Submissions", icon: FolderGit2 },
   { href: "/admin/judging", label: "Judging & Scores", icon: Gavel },
   { href: "/admin/notifications", label: "Notifications", icon: Bell },
@@ -43,6 +44,7 @@ const LINKS = [
   { href: "/admin/feedback", label: "Feedback", icon: MessageSquareHeart },
   { href: "/admin/id-cards", label: "ID Cards", icon: IdCard },
   { href: "/admin/roles", label: "Roles & Admins", icon: ShieldCheck },
+  { href: "/admin/login-activity", label: "Login Activity", icon: History },
   { href: "/admin/audit-logs", label: "Audit Log", icon: ScrollText },
   { href: "/admin/account", label: "Account", icon: KeyRound },
 ];

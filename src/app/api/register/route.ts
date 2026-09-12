@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { registrationSchema } from "@/lib/validations/registration";
 import { provisionParticipantAccount } from "@/lib/auth/participant-provisioning";
 import { rateLimit } from "@/lib/rate-limit";
+import { normalizePhoneInput } from "@/lib/phone";
 
 export async function POST(req: NextRequest) {
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
@@ -124,7 +125,7 @@ export async function POST(req: NextRequest) {
     roll_number: m.rollNumber,
     email: m.email.toLowerCase(),
     mobile: m.mobile,
-    whatsapp: m.whatsappSameAsMobile ? m.mobile : m.whatsapp,
+    whatsapp: m.whatsappSameAsMobile ? m.mobile : normalizePhoneInput(m.whatsapp),
     whatsapp_same_as_mobile: m.whatsappSameAsMobile,
     gender: m.gender || null,
     consent_accepted: true,

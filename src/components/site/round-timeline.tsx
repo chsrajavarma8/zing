@@ -3,6 +3,7 @@
 import { Reveal } from "@/components/motion/reveal";
 import { Badge } from "@/components/ui/badge";
 import { Clock, ShieldCheck, Code2, Presentation } from "lucide-react";
+import { formatDate } from "@/lib/date";
 import type { Round } from "@/types/database";
 
 const ICONS = { minor: ShieldCheck, intermediate: Code2, major: Presentation } as const;
@@ -34,8 +35,8 @@ export function RoundTimeline({ rounds }: { rounds: Round[] }) {
                 {r.starts_at || r.ends_at ? (
                   <p className="mt-3 flex items-center gap-1.5 text-sm text-muted-foreground md:justify-center">
                     <Clock className="h-3.5 w-3.5" />
-                    {r.starts_at ? new Date(r.starts_at).toLocaleDateString(undefined, { dateStyle: "medium" }) : "TBA"}
-                    {r.ends_at ? ` – ${new Date(r.ends_at).toLocaleDateString(undefined, { dateStyle: "medium" })}` : ""}
+                    {r.starts_at ? formatDate(r.starts_at) : "TBA"}
+                    {r.ends_at ? ` – ${formatDate(r.ends_at)}` : ""}
                   </p>
                 ) : (
                   <p className="mt-3 flex items-center gap-1.5 text-sm text-muted-foreground md:justify-center">

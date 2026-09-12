@@ -3,11 +3,15 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getAdminContext, canManage } from "@/lib/auth/admin";
-import { sendEmail } from "@/lib/email/send";
 import { logAudit } from "@/lib/audit";
 import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+// In-website notifications only (req. #14): WhatsApp/email delivery were
+// removed from the sending interface, so "channel" is really just a marker
+// today, always "in_app". Kept as an array (rather than dropped) so
+// notifications/notification_recipients.channel - and any historical rows
+// still carrying "email"/"whatsapp" - don't need a destructive migration.
 export interface NotificationInput {
   title: string;
   message: string;
@@ -16,7 +20,6 @@ export interface NotificationInput {
   emails?: string[];
   roundId?: string;
   priority: "low" | "normal" | "high" | "urgent";
-  channels: ("in_app" | "email" | "whatsapp")[];
   actionLink?: string;
   scheduledAt?: string | null;
 }
@@ -44,7 +47,7 @@ async function resolveAudience(admin: SupabaseClient<any>, eventId: string, inpu
       ...((quals as unknown as { team_id: string }[] | null) ?? []).map((q) => q.team_id),
     ]);
     // Falls back to every registered team when a round has no submissions/qualification rows
-    // yet (e.g. announcing the Minor round exam before anyone has attempted it).
+    // yet (e.g. announcing the Talent round before anyone has submitted).
     if (teamIds.size > 0) membersQuery = membersQuery.in("team_id", Array.from(teamIds));
   }
 
@@ -53,18 +56,25 @@ async function resolveAudience(admin: SupabaseClient<any>, eventId: string, inpu
   return Array.from(new Map(recipientList.map((r) => [r.profile_id, r])).values());
 }
 
+// Read-only preview, but still gated: without this check any signed-in user
+// (not just admins) could probe audience sizes for an event they don't manage.
 export async function previewAudienceCount(eventId: string, input: Pick<NotificationInput, "audienceType" | "teamIds" | "emails" | "roundId">) {
+  const ctx = await getAdminContext();
+  if (!ctx || !canManage(ctx) || ctx.event.id !== eventId) return { count: 0 };
+
   const admin = createAdminClient();
   const recipients = await resolveAudience(admin, eventId, input);
   return { count: recipients.length };
 }
 
 export async function sendNotification(eventId: string, input: NotificationInput) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "Not signed in." };
+  // resolveAudience/the inserts below use the service-role client, which
+  // bypasses RLS entirely - this authorization check is the only thing
+  // standing between "any signed-in user" and "send a notification to any
+  // audience", so it must run before anything else here.
+  const ctx = await getAdminContext();
+  if (!ctx || !canManage(ctx)) return { ok: false, error: "Not authorized." };
+  if (ctx.event.id !== eventId) return { ok: false, error: "Not authorized." };
 
   const admin = createAdminClient();
   const uniqueRecipients = await resolveAudience(admin, eventId, input);
@@ -81,11 +91,11 @@ export async function sendNotification(eventId: string, input: NotificationInput
       audience_filter: { teamIds: input.teamIds ?? null, emails: input.emails ?? null, roundId: input.roundId ?? null },
       priority: input.priority,
       related_round_id: input.roundId ?? null,
-      channels: input.channels,
+      channels: ["in_app"],
       action_link: input.actionLink || null,
       scheduled_at: input.scheduledAt || null,
       sent_at: input.scheduledAt ? null : new Date().toISOString(),
-      created_by: user.id,
+      created_by: ctx.user.userId,
     })
     .select("id")
     .single();
@@ -93,36 +103,25 @@ export async function sendNotification(eventId: string, input: NotificationInput
   if (error || !notification) return { ok: false, error: "Could not create notification." };
   const notificationId = (notification as unknown as { id: string }).id;
 
-  const rows: { notification_id: string; profile_id: string; channel: string; delivery_status: string }[] = [];
-  for (const r of uniqueRecipients) {
-    if (input.channels.includes("in_app")) rows.push({ notification_id: notificationId, profile_id: r.profile_id, channel: "in_app", delivery_status: "delivered" });
-    if (input.channels.includes("email")) rows.push({ notification_id: notificationId, profile_id: r.profile_id, channel: "email", delivery_status: "pending" });
-    if (input.channels.includes("whatsapp")) {
-      rows.push({
-        notification_id: notificationId,
-        profile_id: r.profile_id,
-        channel: "whatsapp",
-        delivery_status: process.env.WHATSAPP_PROVIDER ? "pending" : "not_configured",
-      });
-    }
-  }
+  const rows = uniqueRecipients.map((r) => ({
+    notification_id: notificationId,
+    profile_id: r.profile_id,
+    channel: "in_app" as const,
+    delivery_status: "delivered" as const,
+    delivered_at: new Date().toISOString(),
+  }));
 
-  await admin.from("notification_recipients").insert(rows);
-
-  if (input.channels.includes("email") && !input.scheduledAt) {
-    for (const r of uniqueRecipients) {
-      const result = await sendEmail({ to: r.email, subject: input.title, html: `<p>${input.message.replace(/\n/g, "<br/>")}</p>` });
-      await admin
-        .from("notification_recipients")
-        .update({ delivery_status: result.sent ? "sent" : result.reason === "not_configured" ? "not_configured" : "failed", delivered_at: result.sent ? new Date().toISOString() : null })
-        .eq("notification_id", notificationId)
-        .eq("profile_id", r.profile_id)
-        .eq("channel", "email");
-    }
+  const { error: recipientsError } = await admin.from("notification_recipients").insert(rows);
+  if (recipientsError) {
+    // The notification row exists but nobody can see it without a recipient
+    // row - report this as a failure rather than the misleading "sent"
+    // toast the caller would otherwise show (req. #14: no false successes).
+    await admin.from("notifications").delete().eq("id", notificationId);
+    return { ok: false, error: "Could not deliver to recipients. Nothing was sent." };
   }
 
   await logAudit({
-    actorProfileId: user.id,
+    actorProfileId: ctx.user.userId,
     eventId,
     action: "send_notification",
     entityType: "notifications",

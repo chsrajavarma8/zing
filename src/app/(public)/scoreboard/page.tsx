@@ -19,7 +19,7 @@ interface TeamTotal {
   teamName: string;
   referenceId: string;
   total: number;
-  perCriterion: Record<string, number>;
+  judgeCount: number;
   qualification?: string;
   rank?: number;
 }
@@ -47,9 +47,18 @@ export default async function ScoreboardPage() {
 
   const boards = await Promise.all(
     publishedRounds.map(async (round) => {
-      const [{ data: criteria }, { data: scores }, { data: qualifications }] = await Promise.all([
+      const [{ data: criteria }, { data: finalScores }, { data: qualifications }] = await Promise.all([
         supabase.from("judging_criteria").select("*").eq("round_id", round.id).order("order_index"),
-        supabase.from("scores").select("team_id, criterion_id, marks, teams(team_name, reference_id)").eq("round_id", round.id),
+        // Base table, not the *_participant_visible view: PostgREST's
+        // relationship embedding (teams(...)) is only reliably resolved
+        // through real foreign keys on a table, and this query never
+        // selects `comments` anyway, so the view's masking has nothing to
+        // protect here - RLS (is_scope_published('public')) is identical
+        // either way.
+        supabase
+          .from("final_scores")
+          .select("team_id, score, teams(team_name, reference_id)")
+          .eq("round_id", round.id),
         supabase.from("qualification_status").select("team_id, status, rank").eq("round_id", round.id),
       ]);
 
@@ -62,22 +71,25 @@ export default async function ScoreboardPage() {
       );
 
       const teams = new Map<string, TeamTotal>();
-      for (const row of (scores as unknown as
-        | { team_id: string; criterion_id: string; marks: number; teams: { team_name: string; reference_id: string } | null }[]
+      for (const row of (finalScores as unknown as
+        | { team_id: string; score: number; teams: { team_name: string; reference_id: string } | null }[]
         | null) ?? []) {
         const existing = teams.get(row.team_id) ?? {
           teamId: row.team_id,
           teamName: row.teams?.team_name ?? "Unknown",
           referenceId: row.teams?.reference_id ?? "",
           total: 0,
-          perCriterion: {},
+          judgeCount: 0,
         };
-        existing.perCriterion[row.criterion_id] = (existing.perCriterion[row.criterion_id] ?? 0) + row.marks;
+        existing.total += row.score;
+        existing.judgeCount += 1;
         teams.set(row.team_id, existing);
       }
 
+      // Average across judges, not a raw sum - so a team's published total
+      // doesn't mechanically inflate just because more judges scored it.
       const list = Array.from(teams.values()).map((t) => {
-        const total = Object.values(t.perCriterion).reduce((s, v) => s + v, 0);
+        const total = t.judgeCount > 0 ? t.total / t.judgeCount : 0;
         const q = qualByTeam.get(t.teamId);
         return { ...t, total, qualification: q?.status, rank: q?.rank ?? undefined };
       });

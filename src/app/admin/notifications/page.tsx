@@ -5,6 +5,7 @@ import { CancelNotificationButton } from "@/components/admin/cancel-notification
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { formatDateTime } from "@/lib/date";
 import type { Round, Team } from "@/types/database";
 
 export default async function AdminNotificationsPage() {
@@ -24,15 +25,6 @@ export default async function AdminNotificationsPage() {
         <h1 className="font-heading text-2xl font-bold">Send an event update</h1>
         <p className="text-muted-foreground">Reach the right participants with clear, timely information.</p>
       </div>
-
-      {!process.env.WHATSAPP_PROVIDER && (
-        <Card className="border-rose/40 bg-rose/5">
-          <CardContent className="py-3 text-sm text-muted-foreground">
-            WhatsApp isn&apos;t configured: messages sent on that channel will be marked &ldquo;not configured&rdquo;
-            instead of pretending to deliver. Set <code>WHATSAPP_PROVIDER</code> in your environment to enable it.
-          </CardContent>
-        </Card>
-      )}
 
       <NotificationComposer
         eventId={ctx.event.id}
@@ -69,7 +61,7 @@ export default async function AdminNotificationsPage() {
                   </TableCell>
                   <TableCell className="text-xs text-muted-foreground">{n.channels.join(", ")}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">
-                    {n.sent_at ? new Date(n.sent_at).toLocaleString() : "Scheduled"}
+                    {n.sent_at ? formatDateTime(n.sent_at) : "Scheduled"}
                   </TableCell>
                   <TableCell>
                     {!n.sent_at && canManage(ctx) && (

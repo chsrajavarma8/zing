@@ -20,6 +20,7 @@ import {
 import type { Round } from "@/types/database";
 import type { Metadata } from "next";
 import { getSiteUrl } from "@/lib/site-url";
+import { formatDate } from "@/lib/date";
 
 const HOME_DESCRIPTION =
   "Join Zing Hackathon by Skillglider. Build your own solution, compete across three rounds, and explore a ₹4,00,000 prize pool.";
@@ -314,7 +315,7 @@ export default async function HomePage() {
                   <Card>
                     <CardHeader>
                       <CardTitle className="text-base">{a.title}</CardTitle>
-                      <CardDescription>{new Date(a.published_at).toLocaleDateString()}</CardDescription>
+                      <CardDescription>{formatDate(a.published_at)}</CardDescription>
                     </CardHeader>
                     <CardContent className="text-sm text-muted-foreground">{a.body}</CardContent>
                   </Card>

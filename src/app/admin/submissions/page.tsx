@@ -11,7 +11,7 @@ export default async function AdminSubmissionsPage({ searchParams }: { searchPar
   const sp = await searchParams;
 
   const supabase = await createClient();
-  const { data: rounds } = await supabase.from("rounds").select("*").eq("event_id", ctx.event.id).neq("key", "minor").order("order_index");
+  const { data: rounds } = await supabase.from("rounds").select("*").eq("event_id", ctx.event.id).order("order_index");
   const roundList = (rounds as unknown as Round[] | null) ?? [];
   const activeRoundId = sp.round ?? roundList[0]?.id;
 
@@ -27,7 +27,7 @@ export default async function AdminSubmissionsPage({ searchParams }: { searchPar
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Submissions</h1>
-        <p className="text-muted-foreground">Review Google Drive folder links and confirm accessibility.</p>
+        <p className="text-muted-foreground">Review Drive folder links, document links, and uploaded documents.</p>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -48,7 +48,7 @@ export default async function AdminSubmissionsPage({ searchParams }: { searchPar
             <TableHeader>
               <TableRow>
                 <TableHead>Team</TableHead>
-                <TableHead>Folder link</TableHead>
+                <TableHead>Link / File</TableHead>
                 <TableHead>Checklist</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Updated</TableHead>
@@ -57,7 +57,19 @@ export default async function AdminSubmissionsPage({ searchParams }: { searchPar
             </TableHeader>
             <TableBody>
               {(submissions as unknown as
-                | { id: string; drive_folder_url: string | null; checklist: Record<string, boolean>; review_status: string; reviewer_notes: string | null; updated_at: string; teams: { team_name: string; reference_id: string } | null }[]
+                | {
+                    id: string;
+                    drive_folder_url: string | null;
+                    document_link_url: string | null;
+                    document_storage_path: string | null;
+                    file_name: string | null;
+                    checklist: Record<string, boolean>;
+                    review_status: string;
+                    reviewer_notes: string | null;
+                    reviewed_at: string | null;
+                    updated_at: string;
+                    teams: { team_name: string; reference_id: string } | null;
+                  }[]
                 | null
               )?.map((s) => (
                 <SubmissionReviewRow key={s.id} submission={s} eventId={ctx.event.id} canManage={canManage(ctx)} />

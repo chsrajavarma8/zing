@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { isValidPhone, normalizePhoneInput, PHONE_VALIDATION_MESSAGE } from "@/lib/phone";
+import { GENDER_OPTIONS } from "@/lib/gender";
 
 export const participantSchema = z.object({
   fullName: z.string().trim().min(2, "Enter your full name.").max(120),
@@ -9,7 +11,8 @@ export const participantSchema = z.object({
   mobile: z
     .string()
     .trim()
-    .regex(/^[+]?[0-9\s-]{7,15}$/, "Enter a valid mobile number."),
+    .transform((v) => normalizePhoneInput(v))
+    .refine((v) => isValidPhone(v), PHONE_VALIDATION_MESSAGE),
   // No regex here: validity depends on whatsappSameAsMobile, checked via
   // superRefine wherever this schema is actually used for submission - see
   // validateWhatsapp() below. Keeping this field loosely typed (not wrapped
@@ -18,17 +21,15 @@ export const participantSchema = z.object({
   // when a team lead adds a member post-registration).
   whatsapp: z.string().trim(),
   whatsappSameAsMobile: z.boolean(),
-  gender: z.string().trim().max(40).optional().or(z.literal("")),
+  gender: z.enum(GENDER_OPTIONS).optional().or(z.literal("")),
   role: z.enum(["lead", "member"]),
 });
 
 export type ParticipantInput = z.infer<typeof participantSchema>;
 
-const PHONE_RE = /^[+]?[0-9\s-]{7,15}$/;
-
 export function validateWhatsapp(member: Pick<ParticipantInput, "whatsapp" | "whatsappSameAsMobile">): boolean {
   if (member.whatsappSameAsMobile) return true;
-  return PHONE_RE.test(member.whatsapp.trim());
+  return isValidPhone(member.whatsapp);
 }
 
 export const registrationSchema = z

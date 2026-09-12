@@ -1,18 +1,51 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { getAdminContext } from "@/lib/auth/admin";
 import { logAudit } from "@/lib/audit";
-import { sendAccountSetupLink, generateInviteToken } from "@/lib/auth/provisioning";
+import { sendAccountSetupLink, generateInviteToken, createAdminAccountWithPassword } from "@/lib/auth/provisioning";
 import { revalidatePath } from "next/cache";
 
-export async function inviteAdmin(eventId: string, email: string, role: "event_admin" | "reviewer") {
+export async function inviteAdmin(eventId: string, email: string, role: "event_admin" | "reviewer", initialPassword?: string) {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: "Not signed in." };
 
+  // Only an actual super admin may grant a role directly (with or without an
+  // initial password) - re-checked server-side, not just gated by the page
+  // that renders this form.
+  const ctx = await getAdminContext();
+  if (!ctx || ctx.role !== "super_admin") return { ok: false, error: "Only super admins can do this." };
+
   const trimmedEmail = email.toLowerCase().trim();
+
+  // Path A: super admin types an initial password now - the account is
+  // created (or updated) and the role granted immediately, no email
+  // dependency. Path B (no password given): the existing secure-link invite
+  // flow, unchanged.
+  if (initialPassword && initialPassword.trim().length > 0) {
+    const result = await createAdminAccountWithPassword({
+      email: trimmedEmail,
+      password: initialPassword,
+      role,
+      eventId,
+      invitedBy: user.id,
+    });
+    if (!result.ok) return result;
+
+    await logAudit({
+      actorProfileId: user.id,
+      eventId,
+      action: "create_admin_with_password",
+      entityType: "event_admins",
+      after: { email: trimmedEmail, role },
+    });
+    revalidatePath("/admin/roles");
+    return { ok: true };
+  }
+
   const token = generateInviteToken();
   const { error } = await supabase
     .from("admin_invites")

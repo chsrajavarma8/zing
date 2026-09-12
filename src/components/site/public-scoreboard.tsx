@@ -14,7 +14,7 @@ interface TeamTotal {
   teamName: string;
   referenceId: string;
   total: number;
-  perCriterion: Record<string, number>;
+  judgeCount: number;
   qualification?: string;
   rank?: number;
 }

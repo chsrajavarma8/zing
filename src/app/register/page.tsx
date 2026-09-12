@@ -6,6 +6,7 @@ import { AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { getRegistrationStatus } from "@/lib/registration-status";
 import { pageMetadata } from "@/lib/page-metadata";
+import { formatDateTime } from "@/lib/date";
 
 export const metadata = pageMetadata({
   title: "Register Your Team",
@@ -43,9 +44,9 @@ export default async function RegisterPage() {
         ? "Registration opens soon"
         : "Registration updates coming soon.";
     const description = status.isClosed
-      ? `The registration window for ${event.name} ended on ${new Date(status.closesAt!).toLocaleString()}.`
+      ? `The registration window for ${event.name} ended on ${formatDateTime(status.closesAt!)}.`
       : status.isUpcoming
-        ? `Registration for ${event.name} opens on ${new Date(status.opensAt!).toLocaleString()}.`
+        ? `Registration for ${event.name} opens on ${formatDateTime(status.opensAt!)}.`
         : "Check back soon, or reach out to the organizers if you think this is a mistake.";
 
     return (
@@ -99,6 +100,8 @@ export default async function RegisterPage() {
             teamSizeMax: event.team_size_max,
             allowGenderField: event.allow_gender_field,
             genderFieldRequired: event.gender_field_required,
+            whatsappGroupUrl: event.whatsapp_group_url,
+            whatsappGroupEnabled: event.whatsapp_group_enabled,
           }}
           hasPolicies={Boolean(policies && policies.length > 0)}
           customFields={

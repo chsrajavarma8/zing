@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -8,10 +9,22 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
-import { AlertCircle, CheckCircle2, ExternalLink, Loader2, Lock, FolderOpen } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { AlertCircle, CheckCircle2, ExternalLink, Loader2, Lock, FolderOpen, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { saveSubmission } from "@/app/portal/submission/actions";
+import { saveSubmission, deleteSubmission } from "@/app/portal/submission/actions";
 import { track } from "@/lib/analytics";
+import { formatDateTime } from "@/lib/date";
 import type { Submission } from "@/types/database";
 
 const CHECKLIST_ITEMS = [
@@ -23,17 +36,15 @@ const CHECKLIST_ITEMS = [
 ];
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  pending: "outline",
-  accessible: "secondary",
-  access_issue: "destructive",
+  pending_review: "outline",
   accepted: "default",
+  rejected: "destructive",
 };
 
 const STATUS_LABEL: Record<string, string> = {
-  pending: "Pending review",
-  accessible: "Accessible",
-  access_issue: "Access issue",
+  pending_review: "Pending review",
   accepted: "Accepted",
+  rejected: "Rejected",
 };
 
 export function SubmissionForm({
@@ -41,23 +52,43 @@ export function SubmissionForm({
   roundId,
   submission,
   canEdit,
-  deadlinePassed,
+  windowOpen,
+  unavailableReason,
 }: {
   teamId: string;
   roundId: string;
   submission: Submission | null;
   canEdit: boolean;
-  deadlinePassed: boolean;
+  windowOpen: boolean;
+  unavailableReason: string | null;
 }) {
+  const router = useRouter();
   const [url, setUrl] = useState(submission?.drive_folder_url ?? "");
   const [checklist, setChecklist] = useState<Record<string, boolean>>(
     (submission?.checklist as Record<string, boolean>) ?? {},
   );
   const [confirmed, setConfirmed] = useState(submission?.public_access_self_confirmed ?? false);
   const [busy, setBusy] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const locked = !canEdit || deadlinePassed;
+  const locked = !canEdit || !windowOpen;
+
+  async function handleDelete() {
+    if (!submission) return;
+    setDeleting(true);
+    const result = await deleteSubmission(submission.id, teamId, roundId);
+    setDeleting(false);
+    if (!result.ok) {
+      toast.error(result.error ?? "Could not delete submission.");
+      return;
+    }
+    toast.success("Submission deleted");
+    setUrl("");
+    setChecklist({});
+    setConfirmed(false);
+    router.refresh();
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -81,6 +112,7 @@ export function SubmissionForm({
     }
     track({ name: "submission_saved", props: { roundKey: roundId } });
     toast.success("Your submission link has been saved.");
+    router.refresh();
   }
 
   return (
@@ -97,7 +129,7 @@ export function SubmissionForm({
           <Badge variant={STATUS_VARIANT[submission.review_status]}>{STATUS_LABEL[submission.review_status]}</Badge>
           {submission.updated_at && (
             <span className="text-xs text-muted-foreground">
-              Last updated {new Date(submission.updated_at).toLocaleString()}
+              Last updated {formatDateTime(submission.updated_at)}
             </span>
           )}
           {submission.drive_folder_url && (
@@ -113,13 +145,12 @@ export function SubmissionForm({
         </div>
       )}
 
-      {submission?.review_status === "access_issue" && (
-        <Alert variant="destructive">
+      {submission && submission.review_status !== "pending_review" && (
+        <Alert variant={submission.review_status === "rejected" ? "destructive" : "default"}>
           <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Access issue</AlertTitle>
+          <AlertTitle>{submission.review_status === "rejected" ? "Rejected" : "Accepted"}</AlertTitle>
           <AlertDescription>
-            {submission.reviewer_notes ||
-              "The organizers could not access one or more required materials. Review the feedback and update access permissions."}
+            {submission.reviewer_notes || (submission.review_status === "rejected" ? "The organizers rejected this submission." : "This submission was accepted.")}
           </AlertDescription>
         </Alert>
       )}
@@ -128,9 +159,7 @@ export function SubmissionForm({
         <Alert>
           <Lock className="h-4 w-4" />
           <AlertDescription>
-            {deadlinePassed
-              ? "The submission deadline has passed. Contact the organizers if you need assistance."
-              : "Only the team lead can submit or update this link."}
+            {unavailableReason ?? "Only the team lead or the delegated submitter can submit or update this link."}
           </AlertDescription>
         </Alert>
       )}
@@ -207,6 +236,33 @@ export function SubmissionForm({
                 <ExternalLink className="h-4 w-4" /> Open folder
               </a>
             </Button>
+          )}
+          {submission && !locked && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button type="button" variant="ghost" className="text-destructive hover:text-destructive" disabled={deleting}>
+                  {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />} Delete submission
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete this submission?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This removes your saved submission link for this round. You can submit again while the
+                    submission window is still open.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    onClick={handleDelete}
+                  >
+                    Delete submission
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           )}
         </div>
       </form>

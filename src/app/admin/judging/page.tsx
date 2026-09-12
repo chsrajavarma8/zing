@@ -17,10 +17,10 @@ export default async function AdminJudgingPage({ searchParams }: { searchParams:
     return <p className="text-muted-foreground">No rounds configured yet.</p>;
   }
 
-  const [{ data: criteria }, { data: teams }, { data: scores }, { data: publications }, { data: qualifications }] = await Promise.all([
+  const [{ data: criteria }, { data: teams }, { data: finalScores }, { data: publications }, { data: qualifications }] = await Promise.all([
     supabase.from("judging_criteria").select("*").eq("round_id", activeRound.id).order("order_index"),
     supabase.from("teams").select("*").eq("event_id", ctx.event.id).neq("status", "disqualified").order("team_name"),
-    supabase.from("scores").select("*").eq("round_id", activeRound.id),
+    supabase.from("final_scores").select("*").eq("round_id", activeRound.id),
     supabase.from("publications").select("*").eq("round_id", activeRound.id),
     supabase.from("qualification_status").select("*").eq("round_id", activeRound.id),
   ]);
@@ -51,7 +51,7 @@ export default async function AdminJudgingPage({ searchParams }: { searchParams:
         canManage={canManage(ctx)}
         criteria={(criteria as unknown as JudgingCriterion[] | null) ?? []}
         teams={(teams as unknown as Team[] | null) ?? []}
-        scores={(scores as unknown as { team_id: string; criterion_id: string; judge_id: string; marks: number }[] | null) ?? []}
+        finalScores={(finalScores as unknown as { team_id: string; judge_id: string; score: number; comments: string | null }[] | null) ?? []}
         publications={(publications as unknown as { scope: string; is_published: boolean; reviewer_feedback_visible: boolean }[] | null) ?? []}
         qualifications={(qualifications as unknown as { team_id: string; status: string; rank: number | null }[] | null) ?? []}
       />

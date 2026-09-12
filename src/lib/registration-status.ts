@@ -1,3 +1,5 @@
+import { formatDate } from "@/lib/date";
+
 export interface RegistrationStatus {
   isOpen: boolean;
   opensAt: string | null;
@@ -33,7 +35,7 @@ export function getRegistrationStatus(event: {
 export function registrationCtaLabel(status: RegistrationStatus): string {
   if (status.isOpen) return "Register your team";
   if (status.isUpcoming && status.opensAt) {
-    return `Registration opens ${new Date(status.opensAt).toLocaleDateString(undefined, { dateStyle: "medium" })}`;
+    return `Registration opens ${formatDate(status.opensAt)}`;
   }
   if (status.isClosed) return "Registration closed";
   return "Registration updates coming soon.";

@@ -74,7 +74,7 @@ export default async function AboutPage() {
             <CardTitle className="font-heading">A journey across three rounds.</CardTitle>
           </CardHeader>
           <CardContent className="text-base text-muted-foreground">
-            <p>The event progresses through Minor, Intermediate, and Major rounds. Follow the published instructions and qualification requirements for each stage.</p>
+            <p>The event progresses through Talent, Intermediate, and Major rounds. Follow the published instructions and qualification requirements for each stage.</p>
           </CardContent>
         </Card>
 

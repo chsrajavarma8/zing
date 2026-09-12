@@ -7,6 +7,7 @@ import { TeamStatusControl } from "@/components/admin/team-status-control";
 import { ResetParticipantAccess } from "@/components/admin/reset-participant-access";
 import { DeleteTeamButton } from "@/components/admin/delete-team-button";
 import { RemoveTeamMemberButton } from "@/components/admin/remove-team-member-button";
+import { formatDate, formatDateTime } from "@/lib/date";
 import type { Team, TeamMember } from "@/types/database";
 
 export default async function TeamDetailPage({ params }: { params: Promise<{ teamId: string }> }) {
@@ -64,9 +65,9 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ tea
               <Field label="WhatsApp" value={m.whatsapp} />
               <Field label="College" value={m.college} />
               <Field label="Roll number" value={m.roll_number} />
-              <Field label="Date of birth" value={new Date(m.date_of_birth).toLocaleDateString()} />
+              <Field label="Date of birth" value={formatDate(m.date_of_birth)} />
               {m.gender && <Field label="Gender" value={m.gender} />}
-              <Field label="Registered" value={new Date(m.created_at).toLocaleString()} />
+              <Field label="Registered" value={formatDateTime(m.created_at)} />
             </CardContent>
           </Card>
         ))}

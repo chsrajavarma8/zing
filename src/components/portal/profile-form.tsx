@@ -5,9 +5,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 import { updateMyProfile } from "@/app/portal/profile/actions";
+import { GENDER_OPTIONS } from "@/lib/gender";
 import type { TeamMember } from "@/types/database";
 
 export function ProfileForm({ member }: { member: TeamMember }) {
@@ -64,7 +66,19 @@ export function ProfileForm({ member }: { member: TeamMember }) {
       </div>
       <div className="space-y-2">
         <Label htmlFor="gender">Gender (optional)</Label>
-        <Input id="gender" value={values.gender} onChange={(e) => setValues((v) => ({ ...v, gender: e.target.value }))} />
+        <Select value={values.gender || undefined} onValueChange={(v) => setValues((s) => ({ ...s, gender: v }))}>
+          <SelectTrigger id="gender" className="w-full">
+            <SelectValue placeholder="Select gender" />
+          </SelectTrigger>
+          <SelectContent>
+            {GENDER_OPTIONS.map((option) => (
+              <SelectItem key={option} value={option}>
+                {option}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">Kept private - never shown on any public page.</p>
       </div>
       <div className="space-y-2 sm:col-span-2">
         <div className="flex items-center gap-2">

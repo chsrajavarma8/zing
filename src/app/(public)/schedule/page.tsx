@@ -7,7 +7,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Reveal } from "@/components/motion/reveal";
 import { Info } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Round, Exam } from "@/types/database";
+import { formatDateTime } from "@/lib/date";
+import type { Round } from "@/types/database";
 
 import { pageMetadata } from "@/lib/page-metadata";
 
@@ -18,7 +19,7 @@ export const metadata = pageMetadata({
 });
 
 function fmt(v: string | null | undefined) {
-  return v ? new Date(v).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : null;
+  return v ? formatDateTime(v) : null;
 }
 
 function range(start: string | null | undefined, end: string | null | undefined) {
@@ -41,16 +42,11 @@ export default async function SchedulePage() {
   const intermediate = roundList.find((r) => r.key === "intermediate");
   const major = roundList.find((r) => r.key === "major");
 
-  const { data: exam } = minor
-    ? await supabase.from("exams").select("*").eq("round_id", minor.id).maybeSingle()
-    : { data: null as Exam | null };
-  const examRow = exam as unknown as Exam | null;
-
   const now = Date.now();
   const categories = [
     { label: "Registration", value: range(event.registration_open_at, event.registration_close_at), at: event.registration_close_at },
-    { label: "Minor round assessment", value: examRow ? range(examRow.starts_at, examRow.ends_at) : range(minor?.starts_at, minor?.ends_at), at: examRow?.ends_at ?? minor?.ends_at },
-    { label: "Screening results", value: fmt(examRow?.answer_key_release_at) ?? "To be announced", at: examRow?.answer_key_release_at },
+    { label: "Talent round submission", value: range(minor?.starts_at, minor?.ends_at), at: minor?.ends_at },
+    { label: "Talent round results", value: "To be announced", at: null },
     { label: "Intermediate round submission", value: fmt(intermediate?.ends_at) ?? "To be announced", at: intermediate?.ends_at },
     { label: "Major round presentation", value: range(major?.starts_at, major?.ends_at), at: major?.ends_at },
     { label: "Final results", value: "To be announced", at: null },
@@ -61,10 +57,10 @@ export default async function SchedulePage() {
 
   return (
     <main>
-      <PageHeader eyebrow="Plan ahead" title="Know what happens next." description="Track registration, assessments, submissions, presentations, and results." />
+      <PageHeader eyebrow="Plan ahead" title="Know what happens next." description="Track registration, submissions, presentations, and results." />
 
       <div className="mx-auto max-w-2xl px-4 py-16 sm:px-6">
-        <p className="mb-10 text-center text-sm text-muted-foreground">All times shown in {event.timezone}.</p>
+        <p className="mb-10 text-center text-sm text-muted-foreground">All times shown in Indian Standard Time (IST).</p>
 
         <div className="relative">
           {/* Connecting rail */}

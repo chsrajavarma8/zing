@@ -30,7 +30,7 @@ insert into public.rounds (event_id, key, name, description, order_index, status
 select e.id, r.key, r.name, r.description, r.order_index, 'upcoming'
 from public.events e
 cross join (values
-  ('minor', 'Minor Round', 'Online talent evaluation and screening.', 1),
+  ('minor', 'Talent Round', 'Submit a document showcasing your talent - upload a file or share a document link.', 1),
   ('intermediate', 'Intermediate Round', 'Project development and evaluation.', 2),
   ('major', 'Major Round', 'Final presentation and demonstration.', 3)
 ) as r(key, name, description, order_index)
