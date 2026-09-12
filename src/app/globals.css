@@ -1,26 +1,213 @@
 @import "tailwindcss";
-
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@plugin "@tailwindcss/typography";
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", "Geist Mono Fallback", ui-monospace, monospace;
+  --font-heading: "Space Grotesk", "Space Grotesk Fallback", "Geist", ui-sans-serif, system-ui, sans-serif;
+  --color-ivory: var(--ivory);
+  --color-cream: var(--cream);
+  --color-burgundy: var(--burgundy);
+  --color-rose: var(--rose);
+  --color-brand-from: var(--brand-from);
+  --color-brand-via: var(--brand-via);
+  --color-brand-to: var(--brand-to);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/*
+  Design tokens: ONE light theme, no dark mode anywhere in this app.
+  Brand palette: Burgundy #800020 (text + primary action), Cream #F3E6D5
+  (secondary surface / cards), Ivory #FFF9F2 (dominant page background),
+  Rose #D45060 (accent, focus rings, decorative highlights).
+*/
+:root {
+  color-scheme: light;
+
+  --ivory: #fff9f2;
+  --cream: #f3e6d5;
+  --burgundy: #800020;
+  --rose: #d45060;
+
+  --background: var(--ivory);
+  --foreground: var(--burgundy);
+  --card: var(--cream);
+  --card-foreground: var(--burgundy);
+  --popover: var(--ivory);
+  --popover-foreground: var(--burgundy);
+  --primary: var(--burgundy);
+  --primary-foreground: var(--ivory);
+  --secondary: var(--cream);
+  --secondary-foreground: var(--burgundy);
+  --muted: #ece0cd;
+  --muted-foreground: #8a4a58;
+  --accent: color-mix(in oklab, var(--rose) 16%, var(--cream));
+  --accent-foreground: var(--burgundy);
+  --destructive: #b8283a;
+  --border: color-mix(in oklab, var(--burgundy) 16%, transparent);
+  --input: color-mix(in oklab, var(--burgundy) 20%, transparent);
+  --ring: var(--rose);
+  --chart-1: var(--burgundy);
+  --chart-2: var(--rose);
+  --chart-3: #a83248;
+  --chart-4: #e08a94;
+  --chart-5: #5c0016;
+  --radius: 0.625rem;
+
+  --sidebar: var(--cream);
+  --sidebar-foreground: var(--burgundy);
+  --sidebar-primary: var(--burgundy);
+  --sidebar-primary-foreground: var(--ivory);
+  --sidebar-accent: color-mix(in oklab, var(--burgundy) 10%, var(--cream));
+  --sidebar-accent-foreground: var(--burgundy);
+  --sidebar-border: color-mix(in oklab, var(--burgundy) 14%, transparent);
+  --sidebar-ring: var(--rose);
+
+  --brand-from: var(--burgundy);
+  --brand-via: #a83248;
+  --brand-to: var(--rose);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground text-base;
+  }
+  html {
+    @apply scroll-smooth font-sans;
+  }
+  h1, h2, h3, h4 {
+    @apply font-heading tracking-tight;
+  }
+  ::selection {
+    background: color-mix(in oklab, var(--rose) 35%, transparent);
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer utilities {
+  .text-gradient {
+    background-image: linear-gradient(115deg, var(--brand-from), var(--brand-via), var(--brand-to));
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+  }
+  .bg-grid {
+    background-image:
+      linear-gradient(to right, color-mix(in oklab, var(--burgundy) 10%, transparent) 1px, transparent 1px),
+      linear-gradient(to bottom, color-mix(in oklab, var(--burgundy) 10%, transparent) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black 40%, transparent 100%);
+  }
+  .card-glow {
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--burgundy) 14%, transparent);
+  }
+  .glow-primary {
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, var(--burgundy) 30%, transparent),
+      0 8px 24px 0 color-mix(in oklab, var(--burgundy) 20%, transparent);
+  }
+  .glow-text {
+    text-shadow: 0 0 32px color-mix(in oklab, var(--rose) 45%, transparent);
+  }
+  .surface-elevated {
+    background: color-mix(in oklab, var(--cream) 100%, var(--burgundy) 0%);
+  }
+  .rule-burgundy {
+    border-color: color-mix(in oklab, var(--burgundy) 22%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/*
+  Site-wide animated background (SiteBackground component). Transform/
+  opacity only - no layout properties, no continuous large-blur repaint (the
+  blur is a static filter on an element that only translates/scales, so it's
+  composited once and moved, not re-blurred every frame).
+
+  Explicit .bg-motion-paused class mirrors the reduced-motion media query so
+  the user's own "pause background animation" preference works identically
+  to the OS-level setting, independent of it.
+*/
+@layer utilities {
+  @keyframes bg-drift-a {
+    0%, 100% { transform: translate3d(-4%, -3%, 0) scale(1); }
+    50% { transform: translate3d(4%, 3%, 0) scale(1.08); }
+  }
+  @keyframes bg-drift-b {
+    0%, 100% { transform: translate3d(3%, 4%, 0) scale(1.05); }
+    50% { transform: translate3d(-5%, -2%, 0) scale(1); }
+  }
+  @keyframes bg-drift-c {
+    0%, 100% { transform: translate3d(-2%, 4%, 0) scale(1); }
+    50% { transform: translate3d(3%, -4%, 0) scale(1.06); }
+  }
+  @keyframes bg-float {
+    0%, 100% { transform: translate3d(0, 0, 0); opacity: var(--particle-opacity, 0.35); }
+    50% { transform: translate3d(var(--float-x, 10px), var(--float-y, -16px), 0); opacity: calc(var(--particle-opacity, 0.35) * 0.6); }
+  }
+
+  .bg-blob-a { animation: bg-drift-a 32s ease-in-out infinite; }
+  .bg-blob-b { animation: bg-drift-b 26s ease-in-out infinite; }
+  .bg-blob-c { animation: bg-drift-c 38s ease-in-out infinite; }
+  .bg-particle { animation: bg-float 24s ease-in-out infinite; }
+
+  .bg-motion-paused .bg-blob-a,
+  .bg-motion-paused .bg-blob-b,
+  .bg-motion-paused .bg-blob-c,
+  .bg-motion-paused .bg-particle {
+    animation: none !important;
+  }
 }

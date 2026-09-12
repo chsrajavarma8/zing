@@ -1,0 +1,114 @@
+"use server";
+
+import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { participantSchema, validateWhatsapp } from "@/lib/validations/registration";
+import { provisionParticipantAccount } from "@/lib/auth/participant-provisioning";
+import { requirePasswordChanged } from "@/lib/auth/guards";
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
+
+async function assertBeforeDeadline(eventId: string) {
+  const supabase = await createClient();
+  const { data: event } = await supabase.from("events").select("registration_close_at").eq("id", eventId).maybeSingle();
+  const closeAt = (event as unknown as { registration_close_at: string | null } | null)?.registration_close_at;
+  if (closeAt && Date.now() > Date.parse(closeAt)) {
+    return "Team membership changes are locked — the registration deadline has passed.";
+  }
+  return null;
+}
+
+const newMemberSchema = participantSchema.omit({ role: true }).superRefine((m, ctx) => {
+  if (!validateWhatsapp(m)) {
+    ctx.addIssue({ code: "custom", message: "Enter a valid WhatsApp number", path: ["whatsapp"] });
+  }
+});
+
+export async function addTeamMember(teamId: string, eventId: string, input: z.infer<typeof newMemberSchema>) {
+  const deadlineError = await assertBeforeDeadline(eventId);
+  if (deadlineError) return { ok: false, error: deadlineError };
+
+  const parsed = newMemberSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Please fix the highlighted fields." };
+
+  const supabase = await createClient();
+
+  const guard = await requirePasswordChanged(supabase);
+  if (!guard.ok) return { ok: false, error: guard.error };
+
+  const { count } = await supabase
+    .from("team_members")
+    .select("id", { count: "exact", head: true })
+    .eq("team_id", teamId);
+  const { data: event } = await supabase.from("events").select("team_size_max").eq("id", eventId).maybeSingle();
+  const max = (event as unknown as { team_size_max: number } | null)?.team_size_max ?? 4;
+  if ((count ?? 0) >= max) return { ok: false, error: `Your team already has the maximum of ${max} members.` };
+
+  const { data: teamRow } = await supabase.from("teams").select("team_name").eq("id", teamId).maybeSingle();
+  const teamName = (teamRow as unknown as { team_name: string } | null)?.team_name;
+  if (!teamName) return { ok: false, error: "Could not find your team." };
+
+  const m = parsed.data;
+  // RLS team_members_insert requires the caller to be the team's lead.
+  const { data: inserted, error } = await supabase
+    .from("team_members")
+    .insert({
+      event_id: eventId,
+      team_id: teamId,
+      role: "member",
+      full_name: m.fullName,
+      date_of_birth: m.dateOfBirth,
+      college: m.college,
+      roll_number: m.rollNumber,
+      email: m.email.toLowerCase(),
+      mobile: m.mobile,
+      whatsapp: m.whatsappSameAsMobile ? m.mobile : m.whatsapp,
+      whatsapp_same_as_mobile: m.whatsappSameAsMobile,
+      gender: m.gender || null,
+      consent_accepted: true,
+      communication_consent_essential: true,
+    })
+    .select("id")
+    .single();
+
+  if (error || !inserted) {
+    const msg = error?.message.includes("duplicate")
+      ? "That email or roll number is already registered for this event."
+      : "Could not add member.";
+    return { ok: false, error: msg };
+  }
+
+  // The new member's account is created here with a temporary password they
+  // compute themselves (team name + their own name + DOB) - no email is
+  // sent, and the team lead never sees or sets a password on their behalf.
+  const outcome = await provisionParticipantAccount({
+    email: m.email.toLowerCase(),
+    teamName,
+    fullName: m.fullName,
+    dateOfBirth: m.dateOfBirth,
+  });
+  // Only link immediately if this created a brand-new account. If the email
+  // already belongs to someone else's existing account, it's linked later,
+  // only once that account's real owner proves ownership by signing in with
+  // their own password (see the link-sweep in src/app/login/actions.ts).
+  if (outcome.status === "created") {
+    const admin = createAdminClient();
+    await admin.from("team_members").update({ profile_id: outcome.profileId }).eq("id", (inserted as { id: string }).id);
+  }
+
+  revalidatePath("/portal/team");
+  return { ok: true };
+}
+
+export async function removeTeamMember(memberId: string, eventId: string) {
+  const deadlineError = await assertBeforeDeadline(eventId);
+  if (deadlineError) return { ok: false, error: deadlineError };
+
+  const supabase = await createClient();
+  // RLS team_members_delete requires the caller to be the team's lead (or staff).
+  const { error } = await supabase.from("team_members").delete().eq("id", memberId).neq("role", "lead");
+
+  if (error) return { ok: false, error: "Could not remove member." };
+  revalidatePath("/portal/team");
+  return { ok: true };
+}

@@ -1,0 +1,112 @@
+import { getPublicEvent } from "@/lib/events";
+import { EventNotConfigured } from "@/components/site/event-not-configured";
+import { createClient } from "@/lib/supabase/server";
+import { PageHeader } from "@/components/site/page-header";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Reveal } from "@/components/motion/reveal";
+import { Info } from "lucide-react";
+import { cn } from "@/lib/utils";
+import type { Round, Exam } from "@/types/database";
+
+import { pageMetadata } from "@/lib/page-metadata";
+
+export const metadata = pageMetadata({
+  title: "Schedule",
+  description: "Track key dates and round timing for Zing Hackathon by Skillglider.",
+  path: "/schedule",
+});
+
+function fmt(v: string | null | undefined) {
+  return v ? new Date(v).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : null;
+}
+
+function range(start: string | null | undefined, end: string | null | undefined) {
+  const s = fmt(start);
+  const e = fmt(end);
+  if (s && e) return `${s} – ${e}`;
+  if (s) return `From ${s}`;
+  if (e) return `Until ${e}`;
+  return "To be announced";
+}
+
+export default async function SchedulePage() {
+  const event = await getPublicEvent();
+  if (!event) return <EventNotConfigured />;
+
+  const supabase = await createClient();
+  const { data: rounds } = await supabase.from("rounds").select("*").eq("event_id", event.id).order("order_index");
+  const roundList = (rounds as unknown as Round[] | null) ?? [];
+  const minor = roundList.find((r) => r.key === "minor");
+  const intermediate = roundList.find((r) => r.key === "intermediate");
+  const major = roundList.find((r) => r.key === "major");
+
+  const { data: exam } = minor
+    ? await supabase.from("exams").select("*").eq("round_id", minor.id).maybeSingle()
+    : { data: null as Exam | null };
+  const examRow = exam as unknown as Exam | null;
+
+  const now = Date.now();
+  const categories = [
+    { label: "Registration", value: range(event.registration_open_at, event.registration_close_at), at: event.registration_close_at },
+    { label: "Minor round assessment", value: examRow ? range(examRow.starts_at, examRow.ends_at) : range(minor?.starts_at, minor?.ends_at), at: examRow?.ends_at ?? minor?.ends_at },
+    { label: "Screening results", value: fmt(examRow?.answer_key_release_at) ?? "To be announced", at: examRow?.answer_key_release_at },
+    { label: "Intermediate round submission", value: fmt(intermediate?.ends_at) ?? "To be announced", at: intermediate?.ends_at },
+    { label: "Major round presentation", value: range(major?.starts_at, major?.ends_at), at: major?.ends_at },
+    { label: "Final results", value: "To be announced", at: null },
+  ];
+
+  // "Next" = the earliest configured item that hasn't passed yet.
+  const nextIndex = categories.findIndex((c) => c.at && Date.parse(c.at) >= now);
+
+  return (
+    <main>
+      <PageHeader eyebrow="Plan ahead" title="Know what happens next." description="Track registration, assessments, submissions, presentations, and results." />
+
+      <div className="mx-auto max-w-2xl px-4 py-16 sm:px-6">
+        <p className="mb-10 text-center text-sm text-muted-foreground">All times shown in {event.timezone}.</p>
+
+        <div className="relative">
+          {/* Connecting rail */}
+          <div className="absolute left-[7px] top-2 bottom-2 w-px bg-primary/15" aria-hidden />
+
+          <div className="space-y-8">
+            {categories.map((item, i) => {
+              const past = item.at ? Date.parse(item.at) < now : false;
+              const isNext = i === nextIndex;
+              return (
+                <Reveal key={item.label} delay={Math.min(i * 0.06, 0.3)} className="relative flex gap-5 pl-0">
+                  <span
+                    className={cn(
+                      "relative z-10 mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2",
+                      isNext
+                        ? "border-primary bg-primary shadow-[0_0_0_4px_color-mix(in_oklab,var(--rose)_25%,transparent)]"
+                        : past
+                          ? "border-primary/25 bg-cream"
+                          : "border-primary/40 bg-ivory",
+                    )}
+                  />
+                  <div className={cn("flex-1 pb-1", past && !isNext && "opacity-55")}>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className={cn("font-heading text-lg font-semibold", isNext && "text-primary")}>{item.label}</p>
+                      {isNext && <Badge>Next up</Badge>}
+                      {past && !isNext && <Badge variant="secondary">Past</Badge>}
+                    </div>
+                    <p className="mt-1 text-sm text-muted-foreground">{item.value}</p>
+                  </div>
+                </Reveal>
+              );
+            })}
+          </div>
+        </div>
+
+        <Alert className="mt-10">
+          <Info className="h-4 w-4" />
+          <AlertDescription>
+            Schedules may be updated. Check this page and your dashboard for the latest published information.
+          </AlertDescription>
+        </Alert>
+      </div>
+    </main>
+  );
+}
