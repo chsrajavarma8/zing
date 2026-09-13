@@ -9,6 +9,13 @@ import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+// The real implementation lives in src/lib/auth/temp-password.ts - imported
+// directly (Node can run this .ts file's erasable-syntax-only source
+// natively) rather than kept as a hand-maintained copy here, after that copy
+// silently drifted out of sync with the real formula (2+5+MMDD here vs.
+// 2+3+year in the real implementation) and produced accounts whose password
+// never matched what the sign-in page told participants to compute.
+import { generateTemporaryPassword } from "../src/lib/auth/temp-password.ts";
 
 const rootDir = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const envPath = path.join(rootDir, ".env.local");
@@ -26,22 +33,6 @@ const eventId = eventIdx !== -1 ? args[eventIdx + 1] : null;
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
-
-// Mirrors src/lib/auth/temp-password.ts - kept in sync manually since this
-// script runs outside the Next.js/TypeScript build.
-function normalizeLetters(value) {
-  return value.toLowerCase().replace(/[^a-z]/g, "");
-}
-function padWithX(value, length) {
-  return value.length >= length ? value.slice(0, length) : value + "x".repeat(length - value.length);
-}
-function generateTemporaryPassword({ teamName, fullName, dateOfBirth }) {
-  const teamPart = padWithX(normalizeLetters(teamName), 2);
-  const namePart = padWithX(normalizeLetters(fullName), 5);
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(dateOfBirth).trim());
-  if (!match) throw new Error("invalid date of birth");
-  return `${teamPart}${namePart}${match[2]}${match[3]}`;
-}
 
 let query = supabase
   .from("team_members")

@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { participantSchema, validateWhatsapp } from "@/lib/validations/registration";
 import { normalizePhoneInput } from "@/lib/phone";
-import { provisionParticipantAccount } from "@/lib/auth/participant-provisioning";
+import { provisionParticipantAccount, resyncTempPasswordsForTeam } from "@/lib/auth/participant-provisioning";
 import { requirePasswordChanged } from "@/lib/auth/guards";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -143,6 +143,8 @@ export async function renameTeam(teamId: string, eventId: string, teamName: stri
   // RLS teams_update requires the caller to be the team's lead (or staff).
   const { error } = await supabase.from("teams").update({ team_name: trimmed }).eq("id", teamId);
   if (error) return { ok: false, error: "Could not rename team." };
+
+  await resyncTempPasswordsForTeam(teamId, trimmed);
 
   revalidatePath("/portal/team");
   revalidatePath("/portal");

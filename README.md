@@ -153,19 +153,27 @@ widget, etc.), a consent banner becomes required at that point, not before.
 - **No public signup.** The app never calls `supabase.auth.signUp()` anywhere.
 - **Participants: no email step at all.** `provisionParticipantAccount()`
   (`src/lib/auth/participant-provisioning.ts`) creates each participant's Supabase Auth account
-  synchronously at registration time with an 11-character temporary password deterministically
-  derived from details only they know (first 2 letters of their team name + first 5 letters of
-  their own name + date of birth as MMDD, lowercased, padded with `x` if short — see the
-  "First-time login instructions" on the sign-in page). Nothing is emailed, logged, or displayed —
-  every participant computes their own. `profiles.must_change_password` is set on account creation
-  and gates portal access (enforced in `src/app/portal/layout.tsx`, a server component) until the
-  participant sets a private password via `/change-password`; a database trigger
-  (`protect_must_change_password` in `0016_temp_password_auth.sql`) makes that column writable only
-  by the service-role client, so it cannot be cleared from the browser without an actual password
-  change going through `completeMandatoryPasswordChange()`. Editing a participant's team name, name,
-  or DOB later never touches their password — it's a one-time input at account creation, not
-  recomputed. Existing accounts are never reset automatically; `scripts/migrate-temp-passwords.mjs`
-  provisions accounts only for already-registered participants who don't have one yet.
+  synchronously at registration time with a 9-character temporary password deterministically
+  derived from details only they know (first 2 letters of their team name + first 3 letters of
+  their own name + their 4-digit birth year, lowercased, padded with `x` if short — see
+  `src/lib/auth/temp-password.ts` and the "First-time login instructions" on the sign-in page).
+  Nothing is emailed, logged, or displayed — every participant computes their own.
+  `profiles.must_change_password` is set on account creation and gates portal access (enforced in
+  `src/app/portal/layout.tsx`, a server component) until the participant sets a private password via
+  `/change-password`; a database trigger (`protect_must_change_password` in
+  `0016_temp_password_auth.sql`) makes that column writable only by the service-role client, so it
+  cannot be cleared from the browser without an actual password change going through
+  `completeMandatoryPasswordChange()`. Editing a participant's name or DOB later never touches their
+  password — it's a one-time input at account creation, not recomputed. Renaming a team (portal ->
+  team lead only) is the one exception: since the formula bakes in the team name, `renameTeam()`
+  calls `resyncTempPasswordsForTeam()` immediately after, which reissues the temp password (under the
+  new name) for any member who hasn't finished onboarding yet (`must_change_password` still true) —
+  anyone who already chose their own private password is left untouched. Existing accounts are never
+  reset automatically otherwise; `scripts/migrate-temp-passwords.mjs` provisions accounts only for
+  already-registered participants who don't have one yet, and imports the real formula from
+  `src/lib/auth/temp-password.ts` rather than keeping its own copy (a prior hand-maintained copy
+  drifted out of sync and issued passwords participants could never compute themselves — see
+  `scripts/auth-regression-tests.mjs`, which guards against that recurring).
 - **Admins/reviewers: unchanged, email-link based.** `sendAccountSetupLink()`
   (`src/lib/auth/provisioning.ts`) still sends a real Supabase invite/reset link, completed at
   `/auth/set-password`. The predictable participant formula is never used for admin/reviewer

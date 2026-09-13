@@ -88,6 +88,7 @@ export async function resetParticipantAccess(teamMemberId: string, eventId: stri
     teamName: m.teams.team_name,
     fullName: m.full_name,
     dateOfBirth: m.date_of_birth,
+    teamMemberId: m.id,
   });
   if (!outcome.ok) return { ok: false, error: outcome.error };
 

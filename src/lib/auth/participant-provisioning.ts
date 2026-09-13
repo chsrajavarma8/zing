@@ -102,6 +102,10 @@ export type ResetOutcome = { ok: true } | { ok: false; error: string };
 // password (participants already know the formula from the sign-in page)
 // and forces another mandatory password change.
 //
+// `teamMemberId`, when given, is linked to the account (team_members.profile_id)
+// once the account is confirmed - see the `!params.profileId` branch below for
+// why that matters.
+//
 // The staff-account exclusion is enforced HERE, not only by callers - any
 // future caller of this shared function automatically gets the same
 // protection, rather than depending on every call site remembering to
@@ -119,15 +123,30 @@ export async function resetParticipantAccount(params: {
   teamName: string;
   fullName: string;
   dateOfBirth: string;
+  teamMemberId?: string;
 }): Promise<ResetOutcome> {
   const admin = createAdminClient();
 
-  if (params.profileId) {
+  // A never-linked team_members row (profile_id null) doesn't mean "no
+  // account exists" - provisionParticipantAccount deliberately leaves
+  // profile_id unlinked whenever the email already belonged to an account it
+  // didn't create (see that function's comment). Look that account up here
+  // too, or this whole reset silently no-ops: it used to fall through to
+  // provisionParticipantAccount() below, which finds that same existing
+  // account, reports "linked_existing", and returns success - without ever
+  // touching that account's actual password. This tool is only reachable
+  // after an organizer has already verified the participant's identity out
+  // of band (see callers), which is exactly the ownership proof
+  // provisionParticipantAccount() can't assume on its own - so resetting and
+  // linking it here, unlike there, is safe.
+  const profileId = params.profileId ?? (await findExistingProfileId(params.email.toLowerCase().trim()));
+
+  if (profileId) {
     // Resolve and check the actual target account - never trust a caller
     // simply not to pass a staff account in; verify it here.
     const [{ data: platformRole }, { data: eventAdminRows }] = await Promise.all([
-      admin.from("platform_roles").select("user_id").eq("user_id", params.profileId).maybeSingle(),
-      admin.from("event_admins").select("id").eq("user_id", params.profileId).limit(1),
+      admin.from("platform_roles").select("user_id").eq("user_id", profileId).maybeSingle(),
+      admin.from("event_admins").select("id").eq("user_id", profileId).limit(1),
     ]);
     if (platformRole || (eventAdminRows && eventAdminRows.length > 0)) {
       return {
@@ -135,40 +154,82 @@ export async function resetParticipantAccount(params: {
         error: "This account also has admin access — it cannot be reset with the predictable participant formula.",
       };
     }
-  }
 
-  if (!params.profileId) {
-    const outcome = await provisionParticipantAccount(params);
-    if (outcome.status === "failed") return { ok: false, error: outcome.error };
+    let tempPassword: string;
+    try {
+      tempPassword = generateTemporaryPassword(params);
+    } catch (err) {
+      if (err instanceof InvalidDateOfBirthError) {
+        return { ok: false, error: "Invalid date of birth on file - could not reset access." };
+      }
+      throw err;
+    }
+
+    const { error: pwError } = await admin.auth.admin.updateUserById(profileId, { password: tempPassword });
+    if (pwError) return { ok: false, error: pwError.message || "Could not reset access." };
+
+    // Never leave an account with a reset password but without the mandatory
+    // change-password restriction - if this write fails, surface it as a
+    // failure rather than silently leaving the account in that state.
+    const { error: flagError } = await admin.from("profiles").update({ must_change_password: true }).eq("id", profileId);
+    if (flagError) {
+      return {
+        ok: false,
+        error: "Password was reset but the mandatory change flag could not be set. Reset access again to retry.",
+      };
+    }
+
+    if (params.teamMemberId) {
+      await admin.from("team_members").update({ profile_id: profileId }).eq("id", params.teamMemberId).is("profile_id", null);
+    }
+
     return { ok: true };
   }
 
-  let tempPassword: string;
-  try {
-    tempPassword = generateTemporaryPassword(params);
-  } catch (err) {
-    if (err instanceof InvalidDateOfBirthError) {
-      return { ok: false, error: "Invalid date of birth on file - could not reset access." };
-    }
-    throw err;
+  // Genuinely no account anywhere for this email - create one fresh.
+  const outcome = await provisionParticipantAccount(params);
+  if (outcome.status === "failed") return { ok: false, error: outcome.error };
+  if (params.teamMemberId) {
+    await admin.from("team_members").update({ profile_id: outcome.profileId }).eq("id", params.teamMemberId).is("profile_id", null);
   }
-
-  const { error: pwError } = await admin.auth.admin.updateUserById(params.profileId, { password: tempPassword });
-  if (pwError) return { ok: false, error: pwError.message || "Could not reset access." };
-
-  // Never leave an account with a reset password but without the mandatory
-  // change-password restriction - if this write fails, surface it as a
-  // failure rather than silently leaving the account in that state.
-  const { error: flagError } = await admin
-    .from("profiles")
-    .update({ must_change_password: true })
-    .eq("id", params.profileId);
-  if (flagError) {
-    return {
-      ok: false,
-      error: "Password was reset but the mandatory change flag could not be set. Reset access again to retry.",
-    };
-  }
-
   return { ok: true };
+}
+
+// Called after a team rename (src/app/portal/team/actions.ts, renameTeam):
+// the temporary-password formula bakes in the team name at account-creation
+// time, so a rename would otherwise silently strand anyone who hasn't
+// finished onboarding yet - the sign-in page and admin panel both compute
+// the formula from the CURRENT team name, which no longer matches the
+// password issued under the old one. Only accounts still on their temp
+// password are resynced (must_change_password still true); anyone who
+// already chose their own private password keeps it untouched.
+export async function resyncTempPasswordsForTeam(teamId: string, newTeamName: string): Promise<void> {
+  const admin = createAdminClient();
+  const { data: members } = await admin
+    .from("team_members")
+    .select("profile_id, email, full_name, date_of_birth, profiles(must_change_password)")
+    .eq("team_id", teamId)
+    .not("profile_id", "is", null);
+
+  const toResync = (
+    (members as unknown as {
+      profile_id: string;
+      email: string;
+      full_name: string;
+      date_of_birth: string;
+      profiles: { must_change_password: boolean } | null;
+    }[]) ?? []
+  ).filter((m) => m.profiles?.must_change_password);
+
+  await Promise.all(
+    toResync.map((m) =>
+      resetParticipantAccount({
+        profileId: m.profile_id,
+        email: m.email,
+        teamName: newTeamName,
+        fullName: m.full_name,
+        dateOfBirth: m.date_of_birth,
+      }),
+    ),
+  );
 }

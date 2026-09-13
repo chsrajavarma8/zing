@@ -15,6 +15,12 @@ import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+// The real implementation lives in src/lib/auth/temp-password.ts - imported
+// directly rather than kept as a hand-maintained copy, after that copy
+// silently drifted out of sync with the real formula (2+5+MMDD here vs.
+// 2+3+year in the real implementation), which made every test below that
+// signs in with a computed temp password fail before it could test anything.
+import { generateTemporaryPassword as tempPassword } from "../../src/lib/auth/temp-password.ts";
 
 const rootDir = path.dirname(path.dirname(path.dirname(fileURLToPath(import.meta.url))));
 const envPath = path.join(rootDir, ".env.local");
@@ -51,14 +57,6 @@ async function signInAs(email, password) {
   const { data, error } = await client.auth.signInWithPassword({ email, password });
   if (error) throw new Error(`sign-in failed for ${email}: ${error.message}`);
   return { client, userId: data.user.id };
-}
-
-// Mirrors src/lib/auth/temp-password.ts
-function tempPassword({ teamName, fullName, dateOfBirth }) {
-  const norm = (s) => s.toLowerCase().replace(/[^a-z]/g, "");
-  const pad = (s, n) => (s.length >= n ? s.slice(0, n) : s + "x".repeat(n - s.length));
-  const [, mm, dd] = /^(\d{4})-(\d{2})-(\d{2})/.exec(dateOfBirth);
-  return pad(norm(teamName), 2) + pad(norm(fullName), 5) + mm + dd;
 }
 
 async function getEvent() {
@@ -165,7 +163,20 @@ async function test2_selfPromotion(eventId) {
 }
 
 async function test3_mandatoryChangeBlocksMutation(eventId) {
-  console.log("\n3. HIGH: temp-password session must be blocked from protected mutations (server boundary)");
+  console.log("\n3. HIGH: temp-password sign-in must leave the mandatory-change gate armed");
+  // This used to POST to /api/exam/start with a Bearer token - that route no
+  // longer exists (the exam engine was replaced by round-based submissions).
+  // Its replacement guard, requirePasswordChanged() in src/lib/auth/guards.ts,
+  // is enforced only in application code, not RLS (see that file's own
+  // comment), and it reads the caller's session via cookies set by
+  // @supabase/ssr - reproducing that cookie encoding here just to drive an
+  // HTTP round-trip would test this script's guess at @supabase/ssr's wire
+  // format, not the app. What's actually checked here is the exact
+  // precondition every one of those call sites keys off of:
+  // profiles.must_change_password must still be true right after a
+  // temp-password sign-in, and only flips to false once the participant
+  // completes their own password change (completeMandatoryPasswordChange in
+  // src/app/change-password/actions.ts).
   const teamName = "SecTest Gate";
   const email = "sectest-gate-lead@example.com";
   await cleanupTeam(teamName);
@@ -175,16 +186,18 @@ async function test3_mandatoryChangeBlocksMutation(eventId) {
   await registerTeam(eventId, teamName, [member("lead", { fullName: "Gate Person", email, dob, roll: "SEC-020" })]);
   const pw = tempPassword({ teamName, fullName: "Gate Person", dateOfBirth: dob });
 
-  const { data: signIn } = await anonClient().auth.signInWithPassword({ email, password: pw });
-  check("temp-password sign-in succeeds", !!signIn.session);
+  const { client, userId } = await signInAs(email, pw);
 
-  const res = await fetch(`${SITE_URL}/api/exam/start`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${signIn.session.access_token}` },
-    body: JSON.stringify({ examId: "00000000-0000-0000-0000-000000000000" }),
-  });
-  const body = await res.json();
-  check("exam start rejected before password change", res.status === 403, `status=${res.status} body=${JSON.stringify(body)}`);
+  const { data: profile } = await client.from("profiles").select("must_change_password").eq("id", userId).single();
+  check("mandatory-change flag is set after temp-password sign-in", profile?.must_change_password === true, JSON.stringify(profile));
+
+  const { error: clientClearError } = await client.from("profiles").update({ must_change_password: false }).eq("id", userId);
+  const { data: afterClientClear } = await admin.from("profiles").select("must_change_password").eq("id", userId).single();
+  check(
+    "flag cannot be cleared by the participant's own client (service-role only, see protect_must_change_password)",
+    afterClientClear?.must_change_password === true,
+    `update error=${clientClearError?.message ?? "none"} flag=${afterClientClear?.must_change_password}`,
+  );
 
   await cleanupTeam(teamName);
   await cleanupUser(email);
