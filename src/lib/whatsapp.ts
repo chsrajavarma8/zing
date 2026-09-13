@@ -1,7 +1,10 @@
 // Shared validation for the admin-configured WhatsApp group invite link
 // (req. #16 - a group invite only, never used for outbound notifications).
 
-const GROUP_LINK_RE = /^https:\/\/chat\.whatsapp\.com\/[A-Za-z0-9]{10,}$/;
+// Matches the invite code itself; a trailing query string or fragment is
+// allowed since links copied from the WhatsApp app append tracking params
+// (e.g. ?s=cl&p=i) that don't change which group the link points to.
+const GROUP_LINK_RE = /^https:\/\/chat\.whatsapp\.com\/[A-Za-z0-9]{10,}(?:[?#].*)?$/;
 
 export function isValidWhatsappGroupUrl(url: string | null | undefined): boolean {
   if (!url) return false;
