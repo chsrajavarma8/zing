@@ -8,9 +8,15 @@ export const PHONE_COUNTRY_CODE = "+91";
 // Strips a leading "+91"/"91"/"0" or stray spaces/dashes some users paste in
 // from their contacts app, so validation judges the actual 10-digit number
 // rather than rejecting a harmless country-code prefix.
+//
+// Every strip is guarded by a lookahead requiring exactly 10 digits to
+// remain - an already-valid 10-digit number that happens to legitimately
+// start with "91" (e.g. 91xxxxxxxx, a real Indian mobile prefix) or "0"
+// must never be truncated into an 8/9-digit number and rejected.
 export function normalizePhoneInput(raw: string): string {
   let digits = raw.trim().replace(/[\s-]/g, "");
-  digits = digits.replace(/^\+?91/, "");
+  digits = digits.replace(/^\+/, "");
+  digits = digits.replace(/^91(?=\d{10}$)/, "");
   digits = digits.replace(/^0+(?=\d{10}$)/, "");
   return digits;
 }

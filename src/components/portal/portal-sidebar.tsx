@@ -22,6 +22,7 @@ import {
   LogOut,
   Sparkles,
   LifeBuoy,
+  Crown,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { createClient } from "@/lib/supabase/client";
@@ -94,16 +95,36 @@ function SignOutButton() {
   );
 }
 
-export function PortalSidebar({ eventName, unreadCount = 0 }: { eventName: string; unreadCount?: number }) {
+function RoleBadge({ role }: { role: "lead" | "member" }) {
+  return (
+    <Badge variant={role === "lead" ? "default" : "outline"} className="gap-1 font-normal">
+      {role === "lead" && <Crown className="h-3 w-3" />}
+      {role === "lead" ? "Team Lead" : "Member"}
+    </Badge>
+  );
+}
+
+export function PortalSidebar({
+  eventName,
+  unreadCount = 0,
+  role,
+}: {
+  eventName: string;
+  unreadCount?: number;
+  role: "lead" | "member";
+}) {
   const [open, setOpen] = useState(false);
 
   return (
     <>
       <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-primary/12 bg-cream p-4 lg:flex">
-        <Link href="/portal" className="mb-6 flex items-center gap-2 px-2 font-heading font-semibold text-burgundy">
+        <Link href="/portal" className="mb-3 flex items-center gap-2 px-2 font-heading font-semibold text-burgundy">
           <Sparkles className="h-5 w-5 text-primary" />
           <span className="truncate">{eventName}</span>
         </Link>
+        <div className="mb-3 px-2">
+          <RoleBadge role={role} />
+        </div>
         <div className="flex-1 overflow-y-auto">
           <NavLinks unreadCount={unreadCount} />
         </div>
@@ -134,6 +155,9 @@ export function PortalSidebar({ eventName, unreadCount = 0 }: { eventName: strin
           </SheetTrigger>
           <SheetContent side="left" className="w-72 bg-cream">
             <SheetTitle className="px-4 pt-4">Menu</SheetTitle>
+            <div className="px-4">
+              <RoleBadge role={role} />
+            </div>
             <div className="mt-4 px-4">
               <NavLinks onNavigate={() => setOpen(false)} unreadCount={unreadCount} />
               <div className="mt-4 space-y-1 border-t border-primary/12 pt-3">

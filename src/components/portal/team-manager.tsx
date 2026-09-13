@@ -21,7 +21,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { AlertCircle, Loader2, Plus, Trash2, Lock, Pencil, Save, ArrowLeftRight, UserCheck, X } from "lucide-react";
+import { AlertCircle, Loader2, Plus, Trash2, Lock, Pencil, Save, ArrowLeftRight, UserCheck, X, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import {
   addTeamMember,
@@ -74,6 +74,7 @@ export function TeamManager({
 
   const canManage = isLead && !deadlinePassed && teammates.length < event.team_size_max;
   const canManageTeam = isLead && !deadlinePassed;
+  const isIncomplete = teammates.length < event.team_size_min;
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -197,9 +198,24 @@ export function TeamManager({
         </CardContent>
       </Card>
 
+      {isIncomplete && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle>Team incomplete</AlertTitle>
+          <AlertDescription>
+            Your team has {teammates.length} member{teammates.length === 1 ? "" : "s"}, below the required minimum
+            of {event.team_size_min}. Add {event.team_size_min - teammates.length} more member
+            {event.team_size_min - teammates.length === 1 ? "" : "s"} below to complete your registration.
+          </AlertDescription>
+        </Alert>
+      )}
+
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Members ({teammates.length}/{event.team_size_max})</CardTitle>
+          <div className="flex flex-wrap items-center gap-2">
+            <CardTitle className="text-base">Members ({teammates.length}/{event.team_size_max})</CardTitle>
+            {isIncomplete && <Badge variant="destructive">Incomplete</Badge>}
+          </div>
           <CardDescription>Team size: {event.team_size_min}–{event.team_size_max}, including the lead.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">

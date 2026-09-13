@@ -66,6 +66,23 @@ export async function addTeamMember(teamId: string, eventId: string, input: z.in
   if (!teamName) return { ok: false, error: "Could not find your team." };
 
   const m = parsed.data;
+
+  // Friendly pre-check ahead of the DB's own unique constraint (source of
+  // truth under concurrent submissions - see 0034_team_members_mobile_uniqueness.sql).
+  // Uses the admin client deliberately: team_members_select RLS would hide a
+  // duplicate belonging to a different team from the caller's own session,
+  // silently defeating this check for exactly the cross-team case it exists
+  // to catch. Only a boolean existence result is derived from it - nothing
+  // about the other row is returned to the caller.
+  const mobileCheckClient = createAdminClient();
+  const { count: mobileTaken } = await mobileCheckClient
+    .from("team_members")
+    .select("id", { count: "exact", head: true })
+    .eq("mobile", m.mobile);
+  if ((mobileTaken ?? 0) > 0) {
+    return { ok: false, error: "This mobile number is already registered with another participant." };
+  }
+
   // RLS team_members_insert requires the caller to be the team's lead.
   const { data: inserted, error } = await supabase
     .from("team_members")
@@ -89,9 +106,11 @@ export async function addTeamMember(teamId: string, eventId: string, input: z.in
     .single();
 
   if (error || !inserted) {
-    const msg = error?.message.includes("duplicate")
-      ? "That email or roll number is already registered for this event."
-      : "Could not add member.";
+    const msg = error?.message.includes("team_members_mobile_normalized_idx")
+      ? "This mobile number is already registered with another participant."
+      : error?.message.includes("duplicate")
+        ? "That email or roll number is already registered for this event."
+        : "Could not add member.";
     return { ok: false, error: msg };
   }
 
@@ -122,6 +141,20 @@ export async function removeTeamMember(memberId: string, eventId: string) {
   if (deadlineError) return { ok: false, error: deadlineError };
 
   const supabase = await createClient();
+
+  const { data: member } = await supabase.from("team_members").select("team_id").eq("id", memberId).maybeSingle();
+  const teamId = (member as { team_id: string } | null)?.team_id;
+  if (!teamId) return { ok: false, error: "Could not find this member." };
+
+  const [{ count }, { data: event }] = await Promise.all([
+    supabase.from("team_members").select("id", { count: "exact", head: true }).eq("team_id", teamId),
+    supabase.from("events").select("team_size_min").eq("id", eventId).maybeSingle(),
+  ]);
+  const teamSizeMin = (event as { team_size_min: number } | null)?.team_size_min ?? 1;
+  if ((count ?? 0) <= teamSizeMin) {
+    return { ok: false, error: `Your team must have at least ${teamSizeMin} members - remove someone else after adding a replacement, or contact support.` };
+  }
+
   // RLS team_members_delete requires the caller to be the team's lead (or staff).
   const { error } = await supabase.from("team_members").delete().eq("id", memberId).neq("role", "lead");
 

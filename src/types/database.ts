@@ -96,6 +96,8 @@ export interface Round {
   description: string | null;
   deliverables: string | null;
   evaluation_criteria: string | null;
+  evaluation_guidelines: string | null;
+  categories: string | null;
   advancement_rules: string | null;
   order_index: number;
   starts_at: string | null;

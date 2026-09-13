@@ -108,7 +108,10 @@ export default async function RegistrationsPage({
                       </TableCell>
                       <TableCell className="font-mono text-xs">{t.reference_id}</TableCell>
                       <TableCell>
-                        {c.verified}/{c.total} verified
+                        <span className="flex items-center gap-2">
+                          {c.verified}/{c.total} verified
+                          {c.total < ctx.event.team_size_min && <Badge variant="destructive">Incomplete</Badge>}
+                        </span>
                       </TableCell>
                       <TableCell>
                         <Badge variant={t.status === "verified" ? "default" : t.status === "disqualified" ? "destructive" : "outline"}>

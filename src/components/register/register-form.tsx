@@ -143,6 +143,13 @@ export function RegisterForm({
         return;
       }
     } else if (step === 2) {
+      const currentCount = form.getValues("members").length;
+      if (currentCount < event.teamSizeMin) {
+        setStepError(
+          `Your team needs at least ${event.teamSizeMin} member${event.teamSizeMin === 1 ? "" : "s"} (including the lead) - add ${event.teamSizeMin - currentCount} more before continuing.`,
+        );
+        return;
+      }
       const ok = await form.trigger("members");
       if (!ok) {
         setStepError("Check the highlighted fields before continuing.");
@@ -379,8 +386,18 @@ export function RegisterForm({
               <CardHeader>
                 <CardTitle className="font-heading text-lg">Team members</CardTitle>
                 <CardDescription>
-                  Optional: add {event.teamSizeMin > 1 ? `at least ${event.teamSizeMin - 1} more` : "up to"}{" "}
-                  {event.teamSizeMax - 1} more members.
+                  {event.teamSizeMin > 1 ? (
+                    <>
+                      Add at least {event.teamSizeMin - 1} more member{event.teamSizeMin - 1 === 1 ? "" : "s"}{" "}
+                      (up to {event.teamSizeMax - 1}) - teams must have{" "}
+                      {event.teamSizeMin === event.teamSizeMax
+                        ? `exactly ${event.teamSizeMin} people`
+                        : `${event.teamSizeMin}–${event.teamSizeMax} people`}
+                      , including the lead.
+                    </>
+                  ) : (
+                    `Optional: add up to ${event.teamSizeMax - 1} more members.`
+                  )}
                 </CardDescription>
               </CardHeader>
             </Card>
@@ -402,8 +419,11 @@ export function RegisterForm({
               );
             })}
 
-            {memberCount === 1 && (
-              <p className="text-center text-sm text-muted-foreground">No additional members yet: add one below, or continue with just yourself.</p>
+            {memberCount < event.teamSizeMin && (
+              <p className="text-center text-sm text-muted-foreground">
+                No additional members yet: add {event.teamSizeMin - memberCount} more below to meet the minimum team
+                size.
+              </p>
             )}
 
             {memberCount < event.teamSizeMax && (

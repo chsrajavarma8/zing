@@ -28,8 +28,13 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ tea
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h1 className="text-2xl font-bold">{t.team_name}</h1>
-          <p className="font-mono text-sm text-muted-foreground">{t.reference_id}</p>
+          <h1 className="flex items-center gap-2 text-2xl font-bold">
+            {t.team_name}
+            {memberList.length < ctx.event.team_size_min && <Badge variant="destructive">Incomplete</Badge>}
+          </h1>
+          <p className="font-mono text-sm text-muted-foreground">
+            {t.reference_id} · {memberList.length}/{ctx.event.team_size_max} members
+          </p>
         </div>
         <div className="flex items-center gap-2">
           {canManage(ctx) ? (

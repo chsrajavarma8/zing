@@ -94,6 +94,19 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Mobile numbers identify one participant platform-wide (see
+  // 0034_team_members_mobile_uniqueness.sql), not just within this event -
+  // this is a friendly pre-check ahead of that DB constraint, which remains
+  // the source of truth under concurrent submissions.
+  const mobiles = input.members.map((m) => m.mobile);
+  const { data: dupeMobiles } = await admin.from("team_members").select("mobile").in("mobile", mobiles);
+  if (dupeMobiles && dupeMobiles.length > 0) {
+    return NextResponse.json(
+      { error: "This mobile number is already registered with another participant." },
+      { status: 409 },
+    );
+  }
+
   const { data: currentPolicies } = await admin
     .from("policy_versions")
     .select("id, type")
@@ -143,9 +156,11 @@ export async function POST(req: NextRequest) {
   if (membersError || !insertedMembers) {
     // Roll back the team so we don't leave an orphaned, memberless team behind.
     await admin.from("teams").delete().eq("id", teamRow.id);
-    const msg = membersError?.message?.includes("duplicate")
-      ? "One or more emails or roll numbers are already registered for this event."
-      : "Could not register team members. Please try again.";
+    const msg = membersError?.message?.includes("team_members_mobile_normalized_idx")
+      ? "This mobile number is already registered with another participant."
+      : membersError?.message?.includes("duplicate")
+        ? "One or more emails or roll numbers are already registered for this event."
+        : "Could not register team members. Please try again.";
     return NextResponse.json({ error: msg }, { status: 409 });
   }
 

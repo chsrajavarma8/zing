@@ -127,7 +127,10 @@ export default async function PortalDashboardPage() {
         <Card className="lg:col-span-2">
           <CardHeader className="flex-row items-center justify-between space-y-0">
             <div>
-              <CardTitle className="text-base">Your team</CardTitle>
+              <CardTitle className="flex items-center gap-2 text-base">
+                Your team
+                {teammates.length < event.team_size_min && <Badge variant="destructive">Incomplete</Badge>}
+              </CardTitle>
               <CardDescription>{team.reference_id}</CardDescription>
             </div>
             <Button variant="ghost" size="sm" asChild>

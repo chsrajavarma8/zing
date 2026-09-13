@@ -47,19 +47,17 @@ export default async function ScoreboardPage() {
 
   const boards = await Promise.all(
     publishedRounds.map(async (round) => {
-      const [{ data: criteria }, { data: finalScores }, { data: qualifications }] = await Promise.all([
+      const [{ data: criteria }, { data: finalScores }, { data: qualifications }, { data: teamNames }] = await Promise.all([
         supabase.from("judging_criteria").select("*").eq("round_id", round.id).order("order_index"),
-        // Base table, not the *_participant_visible view: PostgREST's
-        // relationship embedding (teams(...)) is only reliably resolved
-        // through real foreign keys on a table, and this query never
-        // selects `comments` anyway, so the view's masking has nothing to
-        // protect here - RLS (is_scope_published('public')) is identical
-        // either way.
-        supabase
-          .from("final_scores")
-          .select("team_id, score, teams(team_name, reference_id)")
-          .eq("round_id", round.id),
+        // Not an embedded teams(...) relationship: teams_select RLS has no
+        // "public once published" clause (only staff/team-member), so an
+        // anonymous visitor's embed silently resolves to null and every row
+        // falls back to "Unknown" - team names are resolved separately below
+        // via public_scoreboard_teams, a narrow view scoped to exactly this
+        // (0036_teams_select_public_scoreboard.sql).
+        supabase.from("final_scores").select("team_id, score").eq("round_id", round.id),
         supabase.from("qualification_status").select("team_id, status, rank").eq("round_id", round.id),
+        supabase.from("public_scoreboard_teams").select("id, team_name, reference_id"),
       ]);
 
       const criteriaList = (criteria as unknown as JudgingCriterion[] | null) ?? [];
@@ -69,15 +67,17 @@ export default async function ScoreboardPage() {
           q,
         ]) ?? [],
       );
+      const nameByTeam = new Map(
+        (teamNames as unknown as { id: string; team_name: string; reference_id: string }[] | null)?.map((t) => [t.id, t]) ?? [],
+      );
 
       const teams = new Map<string, TeamTotal>();
-      for (const row of (finalScores as unknown as
-        | { team_id: string; score: number; teams: { team_name: string; reference_id: string } | null }[]
-        | null) ?? []) {
+      for (const row of (finalScores as unknown as { team_id: string; score: number }[] | null) ?? []) {
+        const name = nameByTeam.get(row.team_id);
         const existing = teams.get(row.team_id) ?? {
           teamId: row.team_id,
-          teamName: row.teams?.team_name ?? "Unknown",
-          referenceId: row.teams?.reference_id ?? "",
+          teamName: name?.team_name ?? "Unknown",
+          referenceId: name?.reference_id ?? "",
           total: 0,
           judgeCount: 0,
         };
@@ -94,7 +94,14 @@ export default async function ScoreboardPage() {
         return { ...t, total, qualification: q?.status, rank: q?.rank ?? undefined };
       });
 
-      list.sort((a, b) => (a.rank ?? 999) - (b.rank ?? 999) || b.total - a.total);
+      // Admin-assigned rank (qualification_status) wins first when set - an
+      // organizer decision, not purely computed. Below that: total score
+      // descending, then team name ascending as a final deterministic
+      // fallback so a genuine tie never reorders itself on refresh (row
+      // order from the database is not otherwise guaranteed stable).
+      list.sort(
+        (a, b) => (a.rank ?? 999) - (b.rank ?? 999) || b.total - a.total || a.teamName.localeCompare(b.teamName),
+      );
 
       return { round, criteria: criteriaList, teams: list };
     }),

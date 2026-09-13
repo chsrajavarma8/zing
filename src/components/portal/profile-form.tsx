@@ -6,10 +6,12 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Save } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertCircle, Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 import { updateMyProfile } from "@/app/portal/profile/actions";
 import { GENDER_OPTIONS } from "@/lib/gender";
+import { isValidPhone, PHONE_VALIDATION_MESSAGE } from "@/lib/phone";
 import type { TeamMember } from "@/types/database";
 
 export function ProfileForm({ member }: { member: TeamMember }) {
@@ -24,21 +26,40 @@ export function ProfileForm({ member }: { member: TeamMember }) {
     gender: member.gender ?? "",
   });
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setError(null);
+
+    if (!isValidPhone(values.mobile)) {
+      setError(PHONE_VALIDATION_MESSAGE);
+      return;
+    }
+    if (!values.whatsappSameAsMobile && !isValidPhone(values.whatsapp)) {
+      setError(`WhatsApp: ${PHONE_VALIDATION_MESSAGE}`);
+      return;
+    }
+
     setSaving(true);
     const result = await updateMyProfile(member.id, values);
     setSaving(false);
     if (result.ok) {
       toast.success("Profile updated");
     } else {
+      setError(result.error || "Could not save changes");
       toast.error(result.error || "Could not save changes");
     }
   }
 
   return (
     <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2">
+      {error && (
+        <Alert variant="destructive" className="sm:col-span-2">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
       <div className="space-y-2">
         <Label htmlFor="fullName">Full name</Label>
         <Input id="fullName" value={values.fullName} onChange={(e) => setValues((v) => ({ ...v, fullName: e.target.value }))} />
@@ -62,7 +83,13 @@ export function ProfileForm({ member }: { member: TeamMember }) {
       </div>
       <div className="space-y-2">
         <Label htmlFor="mobile">Mobile number</Label>
-        <Input id="mobile" value={values.mobile} onChange={(e) => setValues((v) => ({ ...v, mobile: e.target.value }))} />
+        <Input
+          id="mobile"
+          inputMode="numeric"
+          maxLength={10}
+          value={values.mobile}
+          onChange={(e) => setValues((v) => ({ ...v, mobile: e.target.value.replace(/\D/g, "").slice(0, 10) }))}
+        />
       </div>
       <div className="space-y-2">
         <Label htmlFor="gender">Gender (optional)</Label>
@@ -94,8 +121,10 @@ export function ProfileForm({ member }: { member: TeamMember }) {
         {!values.whatsappSameAsMobile && (
           <Input
             placeholder="WhatsApp number"
+            inputMode="numeric"
+            maxLength={10}
             value={values.whatsapp}
-            onChange={(e) => setValues((v) => ({ ...v, whatsapp: e.target.value }))}
+            onChange={(e) => setValues((v) => ({ ...v, whatsapp: e.target.value.replace(/\D/g, "").slice(0, 10) }))}
           />
         )}
       </div>

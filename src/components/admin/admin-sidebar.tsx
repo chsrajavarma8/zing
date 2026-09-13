@@ -28,6 +28,7 @@ import {
   MessageSquareHeart,
   KeyRound,
   History,
+  CalendarClock,
 } from "lucide-react";
 
 const LINKS = [
@@ -35,6 +36,7 @@ const LINKS = [
   { href: "/admin/events", label: "Event & Branding", icon: Settings2 },
   { href: "/admin/registrations", label: "Registrations", icon: Users },
   { href: "/admin/rounds", label: "Rounds", icon: Trophy },
+  { href: "/admin/schedule", label: "Schedule", icon: CalendarClock },
   { href: "/admin/submissions", label: "Submissions", icon: FolderGit2 },
   { href: "/admin/judging", label: "Judging & Scores", icon: Gavel },
   { href: "/admin/notifications", label: "Notifications", icon: Bell },

@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import { getAdminContext, canManage } from "@/lib/auth/admin";
 import { logAudit } from "@/lib/audit";
 import { revalidatePath } from "next/cache";
 
@@ -54,6 +55,44 @@ export async function saveFinalScore(roundId: string, teamId: string, score: num
     );
 
   if (error) return { ok: false, error: "Could not save score." };
+  revalidatePath("/admin/judging");
+  revalidatePath("/scoreboard");
+  return { ok: true };
+}
+
+// Admin-only (never trusts a client-supplied permission check): removes one
+// judge's final score for one team in one round. RLS (final_scores_delete,
+// 0038_final_scores_delete.sql) is the real boundary underneath - this check
+// only turns a denial into a clear message instead of a generic RLS error.
+// Deletes exactly the selected row: never the team, its members, its
+// submissions, or any other round/judge's score. final_score_audit rows for
+// this score cascade automatically (its own FK); nothing else does.
+export async function deleteFinalScore(scoreId: string, eventId: string) {
+  const ctx = await getAdminContext();
+  if (!ctx || !canManage(ctx) || ctx.event.id !== eventId) {
+    return { ok: false, error: "You do not have permission to delete results." };
+  }
+
+  const supabase = await createClient();
+  const { data: existing } = await supabase
+    .from("final_scores")
+    .select("id, round_id, team_id, judge_id, score")
+    .eq("id", scoreId)
+    .maybeSingle();
+  if (!existing) return { ok: false, error: "This result could not be found." };
+
+  const { error } = await supabase.from("final_scores").delete().eq("id", scoreId);
+  if (error) return { ok: false, error: "Could not delete this result. Please try again." };
+
+  await logAudit({
+    actorProfileId: ctx.user.userId,
+    eventId,
+    action: "delete_final_score",
+    entityType: "final_scores",
+    entityId: scoreId,
+    before: existing,
+  });
+
   revalidatePath("/admin/judging");
   revalidatePath("/scoreboard");
   return { ok: true };

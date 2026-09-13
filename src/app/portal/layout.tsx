@@ -57,7 +57,7 @@ export default async function PortalLayout({ children }: { children: React.React
   return (
     <div className="flex min-h-screen">
       <SkipLink />
-      <PortalSidebar eventName={portal.event.name} unreadCount={count ?? 0} />
+      <PortalSidebar eventName={portal.event.name} unreadCount={count ?? 0} role={portal.membership.role} />
       <main id="main-content" className="flex-1 overflow-x-hidden px-4 py-6 sm:px-8 sm:py-8">
         <div className="mx-auto max-w-5xl">{children}</div>
       </main>

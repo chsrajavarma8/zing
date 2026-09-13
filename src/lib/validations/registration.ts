@@ -56,6 +56,19 @@ export const registrationSchema = z
     if (new Set(emails).size !== emails.length) {
       ctx.addIssue({ code: "custom", message: "This email is already used by another member of this team.", path: ["members"] });
     }
+    const seenMobiles = new Map<string, number>();
+    data.members.forEach((m, i) => {
+      const prevIndex = seenMobiles.get(m.mobile);
+      if (prevIndex !== undefined) {
+        ctx.addIssue({
+          code: "custom",
+          message: "This mobile number is already used by another member of this team.",
+          path: ["members", i, "mobile"],
+        });
+      } else {
+        seenMobiles.set(m.mobile, i);
+      }
+    });
     const rolls = data.members.map((m) => `${m.college.toLowerCase()}::${m.rollNumber.toLowerCase()}`);
     if (new Set(rolls).size !== rolls.length) {
       ctx.addIssue({

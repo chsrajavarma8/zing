@@ -1,0 +1,26 @@
+-- 0034_team_members_mobile_uniqueness.sql
+-- A phone number must identify one participant, globally - not just unique
+-- within a single team or event (existing uniqueness on team_members is
+-- scoped to (event_id, email) and (event_id, college, roll_number); mobile
+-- had no uniqueness protection at all). Enforced here at the database
+-- boundary, not only in application code, so a race between two concurrent
+-- registrations (SELECT-then-INSERT from two requests at once) still can't
+-- both succeed - the second INSERT fails on this constraint instead.
+--
+-- Indexed on a normalized expression, not the raw column: mobile is stored
+-- normalized to bare 10 digits by every current write path (see
+-- normalizePhoneInput() in src/lib/phone.ts), but this makes the constraint
+-- correct regardless of any stray formatting, rather than relying on every
+-- future write path remembering to normalize first.
+--
+-- Deliberately NOT a CHECK constraint requiring exactly 10 digits: an audit
+-- of current production data (2026-09-13) found one existing row with a
+-- malformed 9-digit mobile number, predating this constraint. Adding a
+-- format CHECK here would need to silently guess at and rewrite that real
+-- participant's phone number, which this migration does not do - the
+-- application-layer validation added alongside this migration (registration,
+-- add-member, and profile-edit paths) prevents new malformed numbers, and
+-- the existing row can be corrected by its owner via /portal/profile (now
+-- validated) or by an organizer.
+create unique index team_members_mobile_normalized_idx
+  on public.team_members (regexp_replace(mobile, '[^0-9]', '', 'g'));

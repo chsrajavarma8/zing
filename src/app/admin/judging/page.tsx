@@ -20,7 +20,7 @@ export default async function AdminJudgingPage({ searchParams }: { searchParams:
   const [{ data: criteria }, { data: teams }, { data: finalScores }, { data: publications }, { data: qualifications }] = await Promise.all([
     supabase.from("judging_criteria").select("*").eq("round_id", activeRound.id).order("order_index"),
     supabase.from("teams").select("*").eq("event_id", ctx.event.id).neq("status", "disqualified").order("team_name"),
-    supabase.from("final_scores").select("*").eq("round_id", activeRound.id),
+    supabase.from("final_scores").select("*, profiles(full_name, email)").eq("round_id", activeRound.id),
     supabase.from("publications").select("*").eq("round_id", activeRound.id),
     supabase.from("qualification_status").select("*").eq("round_id", activeRound.id),
   ]);
@@ -51,7 +51,11 @@ export default async function AdminJudgingPage({ searchParams }: { searchParams:
         canManage={canManage(ctx)}
         criteria={(criteria as unknown as JudgingCriterion[] | null) ?? []}
         teams={(teams as unknown as Team[] | null) ?? []}
-        finalScores={(finalScores as unknown as { team_id: string; judge_id: string; score: number; comments: string | null }[] | null) ?? []}
+        finalScores={
+          (finalScores as unknown as
+            | { id: string; team_id: string; judge_id: string; score: number; comments: string | null; profiles: { full_name: string | null; email: string } | null }[]
+            | null) ?? []
+        }
         publications={(publications as unknown as { scope: string; is_published: boolean; reviewer_feedback_visible: boolean }[] | null) ?? []}
         qualifications={(qualifications as unknown as { team_id: string; status: string; rank: number | null }[] | null) ?? []}
       />

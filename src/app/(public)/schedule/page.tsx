@@ -8,6 +8,8 @@ import { Reveal } from "@/components/motion/reveal";
 import { Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDateTime } from "@/lib/date";
+import { roundPhaseLabel } from "@/lib/rounds";
+import { SCHEDULE_EXTRAS_KEY, type ScheduleExtraItem } from "@/lib/schedule-extras";
 import type { Round } from "@/types/database";
 
 import { pageMetadata } from "@/lib/page-metadata";
@@ -36,20 +38,30 @@ export default async function SchedulePage() {
   if (!event) return <EventNotConfigured />;
 
   const supabase = await createClient();
-  const { data: rounds } = await supabase.from("rounds").select("*").eq("event_id", event.id).order("order_index");
+  const [{ data: rounds }, { data: extrasBlock }] = await Promise.all([
+    supabase.from("rounds").select("*").eq("event_id", event.id).order("order_index"),
+    supabase.from("content_blocks").select("content").eq("event_id", event.id).eq("key", SCHEDULE_EXTRAS_KEY).maybeSingle(),
+  ]);
   const roundList = (rounds as unknown as Round[] | null) ?? [];
+  const extraItems = ((extrasBlock as unknown as { content: { items?: ScheduleExtraItem[] } } | null)?.content.items ?? []) as ScheduleExtraItem[];
   const minor = roundList.find((r) => r.key === "minor");
   const intermediate = roundList.find((r) => r.key === "intermediate");
   const major = roundList.find((r) => r.key === "major");
 
   const now = Date.now();
-  const categories = [
+  const categories: { label: string; value: string; at: string | null | undefined; status?: string }[] = [
     { label: "Registration", value: range(event.registration_open_at, event.registration_close_at), at: event.registration_close_at },
-    { label: "Talent round submission", value: range(minor?.starts_at, minor?.ends_at), at: minor?.ends_at },
+    { label: "Talent round submission", value: range(minor?.starts_at, minor?.ends_at), at: minor?.ends_at, status: minor && roundPhaseLabel(minor) },
     { label: "Talent round results", value: "To be announced", at: null },
-    { label: "Intermediate round submission", value: fmt(intermediate?.ends_at) ?? "To be announced", at: intermediate?.ends_at },
-    { label: "Major round presentation", value: range(major?.starts_at, major?.ends_at), at: major?.ends_at },
+    {
+      label: "Intermediate round submission",
+      value: fmt(intermediate?.ends_at) ?? "To be announced",
+      at: intermediate?.ends_at,
+      status: intermediate && roundPhaseLabel(intermediate),
+    },
+    { label: "Major round presentation", value: range(major?.starts_at, major?.ends_at), at: major?.ends_at, status: major && roundPhaseLabel(major) },
     { label: "Final results", value: "To be announced", at: null },
+    ...extraItems.map((item) => ({ label: item.label, value: item.value || "To be announced", at: item.at })),
   ];
 
   // "Next" = the earliest configured item that hasn't passed yet.
@@ -71,7 +83,7 @@ export default async function SchedulePage() {
               const past = item.at ? Date.parse(item.at) < now : false;
               const isNext = i === nextIndex;
               return (
-                <Reveal key={item.label} delay={Math.min(i * 0.06, 0.3)} className="relative flex gap-5 pl-0">
+                <Reveal key={`${item.label}-${i}`} delay={Math.min(i * 0.06, 0.3)} className="relative flex gap-5 pl-0">
                   <span
                     className={cn(
                       "relative z-10 mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2",
@@ -85,6 +97,7 @@ export default async function SchedulePage() {
                   <div className={cn("flex-1 pb-1", past && !isNext && "opacity-55")}>
                     <div className="flex flex-wrap items-center gap-2">
                       <p className={cn("font-heading text-lg font-semibold", isNext && "text-primary")}>{item.label}</p>
+                      {item.status && <Badge variant="outline">{item.status}</Badge>}
                       {isNext && <Badge>Next up</Badge>}
                       {past && !isNext && <Badge variant="secondary">Past</Badge>}
                     </div>

@@ -1,6 +1,6 @@
 import { getAdminContext, canManage } from "@/lib/auth/admin";
 import { createClient } from "@/lib/supabase/server";
-import { RoundEditor } from "@/components/admin/round-editor";
+import { RoundManagementTabs } from "@/components/admin/round-management-tabs";
 import { Card, CardContent } from "@/components/ui/card";
 import type { Round } from "@/types/database";
 
@@ -14,18 +14,18 @@ export default async function AdminRoundsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Rounds</h1>
-        <p className="text-muted-foreground">Set each round&apos;s activation and submission window.</p>
+        <h1 className="text-2xl font-bold">Round Management</h1>
+        <p className="text-muted-foreground">Edit each round&apos;s content, judging setup, and submission window.</p>
       </div>
-      <div className="space-y-4">
-        {((rounds as unknown as Round[] | null) ?? []).map((r) => (
-          <Card key={r.id}>
-            <CardContent className="pt-6">
-              <RoundEditor round={r} eventId={ctx.event.id} readOnly={!canManage(ctx)} />
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      <Card>
+        <CardContent className="pt-6">
+          <RoundManagementTabs
+            rounds={(rounds as unknown as Round[] | null) ?? []}
+            eventId={ctx.event.id}
+            readOnly={!canManage(ctx)}
+          />
+        </CardContent>
+      </Card>
     </div>
   );
 }

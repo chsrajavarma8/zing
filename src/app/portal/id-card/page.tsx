@@ -24,26 +24,28 @@ export default async function IdCardPage() {
         <p className="text-muted-foreground">View and download your participant identification.</p>
       </div>
 
-      {!c ? (
-        <Card>
-          <CardContent className="flex flex-col items-center gap-2 py-16 text-center text-muted-foreground">
-            <IdCard className="h-8 w-8" />
-            <p>Your ID card will appear here when it is issued.</p>
-          </CardContent>
-        </Card>
-      ) : (
-        <IdCardView
-          token={c.qr_token}
-          revoked={c.revoked}
-          fullName={portal.membership.full_name}
-          teamName={portal.team.team_name}
-          teamReferenceId={portal.team.reference_id}
-          eventName={portal.event.name}
-          organizerName={portal.event.organizer_name}
-          role={portal.membership.role}
-          referenceId={portal.membership.reference_id}
-        />
-      )}
+      <div className="flex min-h-[65vh] flex-col items-center justify-center">
+        {!c ? (
+          <Card className="w-full max-w-md">
+            <CardContent className="flex flex-col items-center gap-2 py-16 text-center text-muted-foreground">
+              <IdCard className="h-8 w-8" />
+              <p>Your ID card will appear here when it is issued.</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <IdCardView
+            token={c.qr_token}
+            revoked={c.revoked}
+            fullName={portal.membership.full_name}
+            teamName={portal.team.team_name}
+            teamReferenceId={portal.team.reference_id}
+            eventName={portal.event.name}
+            organizerName={portal.event.organizer_name}
+            role={portal.membership.role}
+            referenceId={portal.membership.reference_id}
+          />
+        )}
+      </div>
     </div>
   );
 }

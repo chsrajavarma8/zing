@@ -3,10 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { useReducedMotion } from "framer-motion";
-import { Button } from "@/components/ui/button";
-import { Waves, PauseCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useBackgroundMotionPreference } from "@/lib/use-background-motion-preference";
 
 type Intensity = "full" | "soft" | "minimal" | "static";
 
@@ -46,11 +43,13 @@ export function SiteBackground() {
   const pathname = usePathname();
   const intensity = intensityFor(pathname);
   const reduceMotion = useReducedMotion();
-  const [paused, setPaused] = useBackgroundMotionPreference();
   const layerRef = useRef<HTMLDivElement>(null);
   const isPublicHome = pathname === "/";
 
-  const motionOff = reduceMotion || paused || intensity === "static";
+  // Always runs automatically and continuously - no manual pause/resume
+  // control. Only prefers-reduced-motion (accessibility) or a "static"
+  // route intensity ever turns it off.
+  const motionOff = reduceMotion || intensity === "static";
 
   // Scroll parallax on the decorative layer only, via direct style writes
   // (no React state per frame) - rAF-throttled, skipped entirely when
@@ -94,11 +93,10 @@ export function SiteBackground() {
   const showGrid = intensity !== "minimal" && intensity !== "static";
 
   return (
-    <>
-      <div
-        aria-hidden="true"
-        className={cn("pointer-events-none fixed inset-0 z-0 overflow-hidden", motionOff && "bg-motion-paused")}
-      >
+    <div
+      aria-hidden="true"
+      className={cn("pointer-events-none fixed inset-0 z-0 overflow-hidden", motionOff && "bg-motion-paused")}
+    >
       <div ref={layerRef} className="absolute inset-0">
         {/* Large soft drifting gradients */}
         <div
@@ -151,25 +149,6 @@ export function SiteBackground() {
             />
           ))}
       </div>
-      </div>
-
-      {/* Discreet, accessible motion control - a preference, not a theme
-          toggle. Rendered as a sibling of the aria-hidden decorative layer
-          (not a child of it), so it stays reachable by keyboard and screen
-          readers regardless of the background's own hidden state. */}
-      <div className="fixed bottom-4 left-4 z-10">
-        <Button
-          variant="secondary"
-          size="icon-sm"
-          className="opacity-50 shadow-sm hover:opacity-100"
-          aria-pressed={paused}
-          aria-label={paused ? "Resume background animation" : "Pause background animation"}
-          title={paused ? "Resume background animation" : "Pause background animation"}
-          onClick={() => setPaused(!paused)}
-        >
-          {paused ? <Waves className="h-3.5 w-3.5" /> : <PauseCircle className="h-3.5 w-3.5" />}
-        </Button>
-      </div>
-    </>
+    </div>
   );
 }

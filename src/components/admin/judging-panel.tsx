@@ -8,10 +8,29 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Trash2, Loader2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Plus, Trash2, Loader2, ListChecks } from "lucide-react";
 import { toast } from "sonner";
-import { upsertCriterion, deleteCriterion, saveFinalScore, setPublication, setQualification } from "@/app/admin/judging/actions";
+import { upsertCriterion, deleteCriterion, saveFinalScore, deleteFinalScore, setPublication, setQualification } from "@/app/admin/judging/actions";
 import type { Round, JudgingCriterion, Team } from "@/types/database";
+
+interface FinalScoreRow {
+  id: string;
+  team_id: string;
+  judge_id: string;
+  score: number;
+  comments: string | null;
+  profiles: { full_name: string | null; email: string } | null;
+}
 
 interface Props {
   round: Round;
@@ -20,7 +39,7 @@ interface Props {
   canManage: boolean;
   criteria: JudgingCriterion[];
   teams: Team[];
-  finalScores: { team_id: string; judge_id: string; score: number; comments: string | null }[];
+  finalScores: FinalScoreRow[];
   publications: { scope: string; is_published: boolean; reviewer_feedback_visible: boolean }[];
   qualifications: { team_id: string; status: string; rank: number | null }[];
 }
@@ -116,6 +135,7 @@ export function JudgingPanel({ round, eventId, currentUserId, canManage, criteri
                 <TableHead className="text-right">Your score (1-100)</TableHead>
                 <TableHead className="text-right">Judges scored</TableHead>
                 <TableHead className="text-right">Team average</TableHead>
+                {canManage && <TableHead className="text-right">Results</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -130,6 +150,11 @@ export function JudgingPanel({ round, eventId, currentUserId, canManage, criteri
                     </TableCell>
                     <TableCell className="text-right text-muted-foreground">{teamScores.length}</TableCell>
                     <TableCell className="text-right font-mono font-semibold">{avg !== null ? avg.toFixed(1) : "N/A"}</TableCell>
+                    {canManage && (
+                      <TableCell className="text-right">
+                        <TeamScoresDialog teamName={t.team_name} scores={teamScores} eventId={eventId} />
+                      </TableCell>
+                    )}
                   </TableRow>
                 );
               })}
@@ -214,6 +239,87 @@ export function JudgingPanel({ round, eventId, currentUserId, canManage, criteri
         </>
       )}
     </div>
+  );
+}
+
+function TeamScoresDialog({ teamName, scores, eventId }: { teamName: string; scores: FinalScoreRow[]; eventId: string }) {
+  const [open, setOpen] = useState(false);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  async function handleDelete(scoreId: string) {
+    setDeletingId(scoreId);
+    const result = await deleteFinalScore(scoreId, eventId);
+    setDeletingId(null);
+    setConfirmingId(null);
+    if (!result.ok) toast.error(result.error ?? "Could not delete this result.");
+    else toast.success("Result deleted");
+  }
+
+  return (
+    <AlertDialog
+      open={open}
+      onOpenChange={(v) => {
+        setOpen(v);
+        if (!v) setConfirmingId(null);
+      }}
+    >
+      <AlertDialogTrigger asChild>
+        <Button variant="ghost" size="sm" disabled={scores.length === 0}>
+          <ListChecks className="h-3.5 w-3.5" /> {scores.length}
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Results for {teamName}</AlertDialogTitle>
+          <AlertDialogDescription asChild>
+            <div className="space-y-2 pt-2 text-left">
+              {scores.length === 0 && <p>No results recorded yet.</p>}
+              {scores.map((s) => {
+                const judgeLabel = s.profiles?.full_name || s.profiles?.email || "Unknown judge";
+                const confirming = confirmingId === s.id;
+                return (
+                  <div key={s.id} className="rounded-md border p-2 text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="font-medium text-foreground">{judgeLabel}</p>
+                        <p className="text-muted-foreground">Score: {s.score}</p>
+                      </div>
+                      {!confirming && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Delete result from ${judgeLabel}`}
+                          onClick={() => setConfirmingId(s.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                    {confirming && (
+                      <div className="mt-2 space-y-2 border-t pt-2">
+                        <p className="text-foreground">Are you sure you want to delete this result?</p>
+                        <div className="flex justify-end gap-2">
+                          <Button variant="ghost" size="sm" onClick={() => setConfirmingId(null)} disabled={deletingId === s.id}>
+                            Cancel
+                          </Button>
+                          <Button variant="destructive" size="sm" onClick={() => handleDelete(s.id)} disabled={deletingId === s.id}>
+                            {deletingId === s.id && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Delete Result
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Close</AlertDialogCancel>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 

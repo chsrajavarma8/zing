@@ -64,8 +64,8 @@ export function IdCardView({
 
   return (
     <div className="space-y-4">
-      <div ref={cardRef} className="inline-block bg-white p-1">
-        <Card className="card-glow mx-auto w-[340px] overflow-hidden border-primary/30">
+      <div ref={cardRef} className="inline-block w-full max-w-[340px] bg-white p-1">
+        <Card className="card-glow mx-auto w-full overflow-hidden border-primary/30">
           <div
             className="h-2 w-full"
             style={{ background: "linear-gradient(90deg, var(--brand-from), var(--brand-via), var(--brand-to))" }}
