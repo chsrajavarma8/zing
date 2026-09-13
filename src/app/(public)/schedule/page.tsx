@@ -52,7 +52,6 @@ export default async function SchedulePage() {
   const categories: { label: string; value: string; at: string | null | undefined; status?: string }[] = [
     { label: "Registration", value: range(event.registration_open_at, event.registration_close_at), at: event.registration_close_at },
     { label: "Talent round submission", value: range(minor?.starts_at, minor?.ends_at), at: minor?.ends_at, status: minor && roundPhaseLabel(minor) },
-    { label: "Talent round results", value: "To be announced", at: null },
     {
       label: "Intermediate round submission",
       value: fmt(intermediate?.ends_at) ?? "To be announced",
