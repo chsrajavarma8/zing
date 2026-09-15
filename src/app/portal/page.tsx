@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getRegistrationStatus } from "@/lib/registration-status";
+import { upcomingRoundDeadlines } from "@/lib/rounds";
 import {
   Clock,
   Trophy,
@@ -14,6 +15,8 @@ import {
   CheckCircle2,
   ClipboardCheck,
   MessageCircle,
+  Mail,
+  Phone,
 } from "lucide-react";
 import Link from "next/link";
 import { formatDate, formatDateTime } from "@/lib/date";
@@ -70,10 +73,7 @@ export default async function PortalDashboardPage() {
     }
   }
 
-  const upcomingDeadlines = roundList
-    .filter((r) => r.ends_at && Date.parse(r.ends_at) > Date.now())
-    .sort((a, b) => Date.parse(a.ends_at!) - Date.parse(b.ends_at!))
-    .slice(0, 3);
+  const upcomingDeadlines = upcomingRoundDeadlines(roundList);
 
   const submissionStatusSummary = roundList.find((r) => submissionList.some((s) => s.round_id === r.id))
     ? "In progress"
@@ -95,6 +95,28 @@ export default async function PortalDashboardPage() {
         )}
       </div>
 
+      <Card className={requiredActions.length > 0 ? "border-primary/40 bg-primary/5" : undefined}>
+        <CardHeader>
+          <CardTitle className="text-base">Your next action</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {requiredActions.length > 0 ? (
+            requiredActions.map((a, i) => (
+              <Link
+                key={i}
+                href={a.href}
+                className="flex items-center justify-between gap-3 rounded-md border border-primary/25 bg-background p-4 text-sm font-medium hover:bg-accent"
+              >
+                {a.label}
+                <ArrowRight className="h-4 w-4 shrink-0" />
+              </Link>
+            ))
+          ) : (
+            <p className="text-sm text-muted-foreground">You&apos;re up to date. New actions will appear here when available.</p>
+          )}
+        </CardContent>
+      </Card>
+
       <Reveal>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatusCard icon={Trophy} label="Current round" value={currentRound?.name ?? "TBA"} />
@@ -103,24 +125,6 @@ export default async function PortalDashboardPage() {
           <StatusCard icon={ClipboardCheck} label="Submission status" value={submissionStatusSummary} />
         </div>
       </Reveal>
-
-      <Card className={requiredActions.length > 0 ? "border-rose/40 bg-rose/5" : undefined}>
-        <CardHeader>
-          <CardTitle className="text-base">Your next action</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {requiredActions.length > 0 ? (
-            requiredActions.map((a, i) => (
-              <Link key={i} href={a.href} className="flex items-center justify-between rounded-md border bg-background p-3 text-sm hover:bg-accent">
-                {a.label}
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            ))
-          ) : (
-            <p className="text-sm text-muted-foreground">You&apos;re up to date. New actions will appear here when available.</p>
-          )}
-        </CardContent>
-      </Card>
 
       <Reveal delay={0.05}>
       <div className="grid gap-6 lg:grid-cols-3">
@@ -244,6 +248,36 @@ export default async function PortalDashboardPage() {
           </CardContent>
         </Card>
       </div>
+      </Reveal>
+
+      <Reveal delay={0.12}>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Need help?</CardTitle>
+            <CardDescription>
+              Stuck on registration, a submission, or your account? Reach out and an organizer will follow up.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center gap-3">
+            <Button variant="outline" asChild>
+              <a href={`mailto:${event.support_email}`}>
+                <Mail className="h-4 w-4" /> {event.support_email}
+              </a>
+            </Button>
+            {event.support_phone && (
+              <Button variant="outline" asChild>
+                <a href={`tel:${event.support_phone}`}>
+                  <Phone className="h-4 w-4" /> {event.support_phone}
+                </a>
+              </Button>
+            )}
+            <Button variant="ghost" asChild>
+              <Link href="/portal/requests">
+                Raise a request <ArrowUpRight className="h-3.5 w-3.5" />
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
       </Reveal>
     </div>
   );

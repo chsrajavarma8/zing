@@ -7,7 +7,7 @@ import { pageMetadata } from "@/lib/page-metadata";
 import type { Round } from "@/types/database";
 
 export const metadata = pageMetadata({
-  title: "Minor Round",
+  title: "Talent Round",
   description: "Talent Round details, judging criteria, schedule, and submission for Zing Hackathon.",
   path: "/rounds/minor",
 });

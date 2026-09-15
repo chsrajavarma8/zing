@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Eye, EyeOff } from "lucide-react";
 
-interface PasswordInputProps extends Omit<React.ComponentProps<"input">, "type"> {}
+type PasswordInputProps = Omit<React.ComponentProps<"input">, "type">;
 
 // Plain show/hide toggle - deliberately does not restrict paste or
 // autocomplete, so password managers keep working.

@@ -7,7 +7,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Reveal } from "@/components/motion/reveal";
 import { Info } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatDateTime } from "@/lib/date";
+import { formatDateTime, nowMs } from "@/lib/date";
 import { roundPhaseLabel } from "@/lib/rounds";
 import { SCHEDULE_EXTRAS_KEY, type ScheduleExtraItem } from "@/lib/schedule-extras";
 import type { Round } from "@/types/database";
@@ -48,7 +48,7 @@ export default async function SchedulePage() {
   const intermediate = roundList.find((r) => r.key === "intermediate");
   const major = roundList.find((r) => r.key === "major");
 
-  const now = Date.now();
+  const now = nowMs();
   const categories: { label: string; value: string; at: string | null | undefined; status?: string }[] = [
     { label: "Registration", value: range(event.registration_open_at, event.registration_close_at), at: event.registration_close_at },
     { label: "Talent round submission", value: range(minor?.starts_at, minor?.ends_at), at: minor?.ends_at, status: minor && roundPhaseLabel(minor) },

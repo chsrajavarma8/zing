@@ -18,8 +18,10 @@ export function ProfileForm({ member }: { member: TeamMember }) {
   const [values, setValues] = useState({
     fullName: member.full_name,
     dateOfBirth: member.date_of_birth,
+    educationLevel: member.education_level,
     college: member.college,
-    rollNumber: member.roll_number,
+    rollNumber: member.roll_number ?? "",
+    classGrade: member.class_grade ?? "",
     mobile: member.mobile,
     whatsapp: member.whatsapp,
     whatsappSameAsMobile: member.whatsapp_same_as_mobile,
@@ -74,13 +76,32 @@ export function ProfileForm({ member }: { member: TeamMember }) {
         />
       </div>
       <div className="space-y-2">
-        <Label htmlFor="college">College / institution</Label>
-        <Input id="college" value={values.college} onChange={(e) => setValues((v) => ({ ...v, college: e.target.value }))} />
+        <Label htmlFor="educationLevel">Studying in</Label>
+        <Select value={values.educationLevel} onValueChange={(v) => setValues((s) => ({ ...s, educationLevel: v as "school" | "college" }))}>
+          <SelectTrigger id="educationLevel" className="w-full">
+            <SelectValue placeholder="Select education level" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="school">School</SelectItem>
+            <SelectItem value="college">College / university</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
       <div className="space-y-2">
-        <Label htmlFor="rollNumber">College roll number</Label>
-        <Input id="rollNumber" value={values.rollNumber} onChange={(e) => setValues((v) => ({ ...v, rollNumber: e.target.value }))} />
+        <Label htmlFor="college">{values.educationLevel === "school" ? "School name" : "College / institution"}</Label>
+        <Input id="college" value={values.college} onChange={(e) => setValues((v) => ({ ...v, college: e.target.value }))} />
       </div>
+      {values.educationLevel === "school" ? (
+        <div className="space-y-2">
+          <Label htmlFor="classGrade">Class / grade</Label>
+          <Input id="classGrade" value={values.classGrade} onChange={(e) => setValues((v) => ({ ...v, classGrade: e.target.value }))} />
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <Label htmlFor="rollNumber">College roll number</Label>
+          <Input id="rollNumber" value={values.rollNumber} onChange={(e) => setValues((v) => ({ ...v, rollNumber: e.target.value }))} />
+        </div>
+      )}
       <div className="space-y-2">
         <Label htmlFor="mobile">Mobile number</Label>
         <Input

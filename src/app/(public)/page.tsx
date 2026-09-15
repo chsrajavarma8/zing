@@ -11,16 +11,19 @@ import { getRegistrationStatus, registrationCtaLabel } from "@/lib/registration-
 import {
   ArrowRight,
   Trophy,
-  FolderGit2,
   CheckCircle2,
   Megaphone,
   ShieldCheck,
   Layers,
+  Users,
+  Gavel,
+  GraduationCap,
 } from "lucide-react";
 import type { Round } from "@/types/database";
 import type { Metadata } from "next";
 import { getSiteUrl } from "@/lib/site-url";
 import { formatDate } from "@/lib/date";
+import { MENTOR_COUNT_LABEL, JUDGE_COUNT_LABEL, ROUND_COUNT_LABEL, ELIGIBILITY_SUMMARY } from "@/lib/event-facts";
 
 const HOME_DESCRIPTION =
   "Join Zing Hackathon by Skillglider. Build your own solution, compete across three rounds, and explore a ₹4,00,000 prize pool.";
@@ -117,6 +120,13 @@ export default async function HomePage() {
               </p>
             </Reveal>
 
+            <Reveal delay={0.15}>
+              <p className="mt-3 flex items-start gap-2 text-sm text-foreground/60">
+                <GraduationCap className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
+                {ELIGIBILITY_SUMMARY}
+              </p>
+            </Reveal>
+
             <Reveal delay={0.18}>
               <div className="mt-10 flex flex-wrap items-baseline gap-3 border-t border-primary/15 pt-6">
                 <span className="font-heading text-5xl font-bold tracking-tight sm:text-6xl">{event.prize_pool_label}</span>
@@ -191,6 +201,72 @@ export default async function HomePage() {
         </div>
       </section>
 
+      {/* ========================= EVENT HIGHLIGHTS ========================= */}
+      <section className="border-y border-primary/12 bg-ivory py-14">
+        <div className="mx-auto grid max-w-5xl grid-cols-2 gap-8 px-4 sm:px-6 md:grid-cols-4">
+          <StaggerReveal step={0.06}>
+            <div className="text-center">
+              <p className="font-heading text-3xl font-bold text-primary sm:text-4xl">{event.prize_pool_label}</p>
+              <p className="mt-1 text-sm text-muted-foreground">Prize pool</p>
+            </div>
+            <div className="text-center">
+              <p className="font-heading text-3xl font-bold text-primary sm:text-4xl">{MENTOR_COUNT_LABEL}</p>
+              <p className="mt-1 text-sm text-muted-foreground">Mentors</p>
+            </div>
+            <div className="text-center">
+              <p className="font-heading text-3xl font-bold text-primary sm:text-4xl">{JUDGE_COUNT_LABEL}</p>
+              <p className="mt-1 text-sm text-muted-foreground">Judges</p>
+            </div>
+            <div className="text-center">
+              <p className="font-heading text-3xl font-bold text-primary sm:text-4xl">{ROUND_COUNT_LABEL}</p>
+              <p className="mt-1 text-sm text-muted-foreground">Rounds</p>
+            </div>
+          </StaggerReveal>
+        </div>
+      </section>
+
+      {/* ========================= WHO CAN PARTICIPATE ========================= */}
+      <section className="bg-background py-24 sm:py-28">
+        <div className="mx-auto max-w-3xl px-4 text-center sm:px-6">
+          <Reveal>
+            <p className="text-sm font-semibold uppercase tracking-[0.25em] text-rose">Who can participate</p>
+            <h2 className="mt-4 text-balance font-heading text-4xl font-bold leading-[1.05] sm:text-5xl">
+              School or college, everyone builds together.
+            </h2>
+            <p className="mx-auto mt-5 max-w-xl text-lg text-foreground/75">{ELIGIBILITY_SUMMARY}</p>
+          </Reveal>
+          <Reveal delay={0.1}>
+            <div className="mt-10 grid gap-4 sm:grid-cols-2">
+              <Card className="text-left">
+                <CardContent className="flex items-start gap-3 py-6">
+                  <GraduationCap className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                  <div>
+                    <p className="font-heading font-semibold">School and college welcome</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      From school through graduate studies - registration only asks for details relevant to your
+                      education level.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="text-left">
+                <CardContent className="flex items-start gap-3 py-6">
+                  <Users className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                  <div>
+                    <p className="font-heading font-semibold">
+                      Teams of {event.team_size_min}–{event.team_size_max}
+                    </p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Including your team lead. Build your team before you register.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
       {/* ========================= ABOUT (editorial split) ========================= */}
       <section className="border-y border-primary/12 bg-cream py-24 sm:py-28">
         <div className="mx-auto grid max-w-6xl gap-10 px-4 sm:px-6 lg:grid-cols-[1fr_0.8fr] lg:gap-16">
@@ -213,7 +289,7 @@ export default async function HomePage() {
               </li>
               <li>
                 <p className="font-heading text-lg font-semibold">02: Three rounds to prove it</p>
-                <p className="text-sm text-muted-foreground">Minor, Intermediate, Major: each raising the bar.</p>
+                <p className="text-sm text-muted-foreground">Talent, Intermediate, Major: each raising the bar.</p>
               </li>
               <li>
                 <p className="font-heading text-lg font-semibold">03: One place for everything</p>
@@ -258,6 +334,38 @@ export default async function HomePage() {
           </div>
         </section>
       )}
+
+      {/* ========================= MENTORS AND JUDGES ========================= */}
+      <section className="bg-background py-24 sm:py-28">
+        <div className="mx-auto max-w-4xl px-4 text-center sm:px-6">
+          <Reveal>
+            <p className="text-sm font-semibold uppercase tracking-[0.25em] text-rose">Guided and evaluated</p>
+            <h2 className="mt-4 text-balance font-heading text-4xl font-bold leading-[1.05] sm:text-5xl">
+              Mentors and judges backing your build.
+            </h2>
+          </Reveal>
+          <Reveal delay={0.1}>
+            <div className="mt-10 grid gap-4 sm:grid-cols-2">
+              <Card className="card-glow border-primary/20">
+                <CardContent className="flex flex-col items-center gap-2 py-10">
+                  <Users className="h-7 w-7 text-primary" />
+                  <p className="font-heading text-3xl font-bold">{MENTOR_COUNT_LABEL}</p>
+                  <p className="text-sm font-medium text-muted-foreground">Mentors</p>
+                  <p className="mt-2 text-sm text-muted-foreground">Lineup to be announced.</p>
+                </CardContent>
+              </Card>
+              <Card className="card-glow border-primary/20">
+                <CardContent className="flex flex-col items-center gap-2 py-10">
+                  <Gavel className="h-7 w-7 text-primary" />
+                  <p className="font-heading text-3xl font-bold">{JUDGE_COUNT_LABEL}</p>
+                  <p className="text-sm font-medium text-muted-foreground">Judges</p>
+                  <p className="mt-2 text-sm text-muted-foreground">Lineup to be announced.</p>
+                </CardContent>
+              </Card>
+            </div>
+          </Reveal>
+        </div>
+      </section>
 
       {/* ========================= SUBMISSION PREVIEW ========================= */}
       <section className="border-y border-primary/12 bg-cream py-24 sm:py-28">

@@ -30,8 +30,8 @@ export function NotificationComposer({ eventId, rounds, teams }: { eventId: stri
   const [countLoading, setCountLoading] = useState(false);
 
   useEffect(() => {
-    setCountLoading(true);
     const id = setTimeout(() => {
+      setCountLoading(true);
       previewAudienceCount(eventId, {
         audienceType,
         teamIds: Array.from(teamIds),

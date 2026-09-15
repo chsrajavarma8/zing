@@ -2,11 +2,23 @@ import { z } from "zod";
 import { isValidPhone, normalizePhoneInput, PHONE_VALIDATION_MESSAGE } from "@/lib/phone";
 import { GENDER_OPTIONS } from "@/lib/gender";
 
+// Req.: school students must not be forced to provide college-specific
+// details. `college` doubles as "school or college name" for both levels;
+// `rollNumber` (college) and `classGrade` (school) are each required only
+// for their own education level - enforced via validateEducationFields()
+// rather than baked into the field schema itself, so participantSchema stays
+// a plain ZodObject (callers like the "add member" action still `.omit()`
+// fields from it - see src/app/portal/team/actions.ts).
+export const EDUCATION_LEVELS = ["school", "college"] as const;
+export type EducationLevel = (typeof EDUCATION_LEVELS)[number];
+
 export const participantSchema = z.object({
   fullName: z.string().trim().min(2, "Enter your full name.").max(120),
   dateOfBirth: z.string().refine((v) => !Number.isNaN(Date.parse(v)), "Enter a valid date of birth."),
-  college: z.string().trim().min(2, "Enter your college or institution.").max(200),
-  rollNumber: z.string().trim().min(1, "Enter your college roll number.").max(60),
+  educationLevel: z.enum(EDUCATION_LEVELS),
+  college: z.string().trim().min(2, "Enter your school or college name.").max(200),
+  rollNumber: z.string().trim().max(60),
+  classGrade: z.string().trim().max(40),
   email: z.string().trim().toLowerCase().email("Enter a valid email address."),
   mobile: z
     .string()
@@ -32,6 +44,21 @@ export function validateWhatsapp(member: Pick<ParticipantInput, "whatsapp" | "wh
   return isValidPhone(member.whatsapp);
 }
 
+// Returns null when valid, or a { field, message } issue to attach - keeps
+// the "which field, which message" decision in one place for every caller
+// (registration, add-member, profile edit) instead of duplicating it.
+export function validateEducationFields(
+  member: Pick<ParticipantInput, "educationLevel" | "rollNumber" | "classGrade">,
+): { field: "rollNumber" | "classGrade"; message: string } | null {
+  if (member.educationLevel === "college" && !member.rollNumber?.trim()) {
+    return { field: "rollNumber", message: "Enter your college roll number." };
+  }
+  if (member.educationLevel === "school" && !member.classGrade?.trim()) {
+    return { field: "classGrade", message: "Enter your class or grade." };
+  }
+  return null;
+}
+
 export const registrationSchema = z
   .object({
     eventId: z.string().uuid(),
@@ -51,6 +78,10 @@ export const registrationSchema = z
       if (!validateWhatsapp(m)) {
         ctx.addIssue({ code: "custom", message: "Enter a valid WhatsApp number.", path: ["members", i, "whatsapp"] });
       }
+      const educationIssue = validateEducationFields(m);
+      if (educationIssue) {
+        ctx.addIssue({ code: "custom", message: educationIssue.message, path: ["members", i, educationIssue.field] });
+      }
     });
     const emails = data.members.map((m) => m.email.toLowerCase());
     if (new Set(emails).size !== emails.length) {
@@ -69,14 +100,23 @@ export const registrationSchema = z
         seenMobiles.set(m.mobile, i);
       }
     });
-    const rolls = data.members.map((m) => `${m.college.toLowerCase()}::${m.rollNumber.toLowerCase()}`);
-    if (new Set(rolls).size !== rolls.length) {
-      ctx.addIssue({
-        code: "custom",
-        message: "This college + roll number is already used by another member of this team.",
-        path: ["members"],
-      });
-    }
+    // Roll-number dedup only makes sense for college members who actually
+    // have one - school members share no such identifier.
+    const seenRolls = new Map<string, number>();
+    data.members.forEach((m, i) => {
+      if (m.educationLevel !== "college" || !m.rollNumber?.trim()) return;
+      const key = `${m.college.toLowerCase()}::${m.rollNumber.toLowerCase()}`;
+      const prevIndex = seenRolls.get(key);
+      if (prevIndex !== undefined) {
+        ctx.addIssue({
+          code: "custom",
+          message: "This college + roll number is already used by another member of this team.",
+          path: ["members"],
+        });
+      } else {
+        seenRolls.set(key, i);
+      }
+    });
   });
 
 export type RegistrationInput = z.infer<typeof registrationSchema>;

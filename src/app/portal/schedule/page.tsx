@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CalendarClock, Info } from "lucide-react";
-import { formatDateTime } from "@/lib/date";
+import { formatDateTime, nowMs } from "@/lib/date";
 import type { Round } from "@/types/database";
 
 export default async function PortalSchedulePage() {
@@ -23,6 +23,7 @@ export default async function PortalSchedulePage() {
   ].filter(Boolean) as { label: string; at: string }[];
 
   items.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  const now = nowMs();
 
   return (
     <div className="space-y-6">
@@ -35,7 +36,7 @@ export default async function PortalSchedulePage() {
 
       <div className="space-y-3">
         {items.map((item, i) => {
-          const past = Date.parse(item.at) < Date.now();
+          const past = Date.parse(item.at) < now;
           return (
             <Card key={i} className={past ? "opacity-60" : "card-glow"}>
               <CardContent className="flex flex-wrap items-center justify-between gap-2 py-4">

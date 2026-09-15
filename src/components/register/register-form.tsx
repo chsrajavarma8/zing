@@ -64,8 +64,10 @@ function emptyMember(role: "lead" | "member"): ParticipantInput {
   return {
     fullName: "",
     dateOfBirth: "",
+    educationLevel: "college",
     college: "",
     rollNumber: "",
+    classGrade: "",
     email: "",
     mobile: "",
     whatsapp: "",
@@ -134,6 +136,7 @@ export function RegisterForm({
         "members.0.dateOfBirth",
         "members.0.college",
         "members.0.rollNumber",
+        "members.0.classGrade",
         "members.0.email",
         "members.0.mobile",
         "members.0.whatsapp",
@@ -461,6 +464,8 @@ export function RegisterForm({
                       </div>
                       <p className="text-muted-foreground">
                         {m.email} · {m.mobile} · {m.college}
+                        {m.educationLevel === "college" && m.rollNumber ? ` (Roll no. ${m.rollNumber})` : ""}
+                        {m.educationLevel === "school" && m.classGrade ? ` (Class ${m.classGrade})` : ""}
                       </p>
                     </div>
                   ))}
@@ -577,12 +582,13 @@ function MemberFields({
 }) {
   const errors = form.formState.errors.members?.[index];
   const sameAsMobile = form.watch(`members.${index}.whatsappSameAsMobile`);
+  const educationLevel = form.watch(`members.${index}.educationLevel`);
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <div className="space-y-2">
         <Label htmlFor={`members.${index}.fullName`}>Full name</Label>
-        <Input id={`members.${index}.fullName`} placeholder="As per college ID" {...form.register(`members.${index}.fullName`)} />
+        <Input id={`members.${index}.fullName`} placeholder="As per school/college ID" {...form.register(`members.${index}.fullName`)} />
         <FieldError err={errors?.fullName} />
       </div>
       <div className="space-y-2">
@@ -590,17 +596,44 @@ function MemberFields({
         <Input type="date" id={`members.${index}.dateOfBirth`} {...form.register(`members.${index}.dateOfBirth`)} />
         <FieldError err={errors?.dateOfBirth} />
       </div>
+      <div className="space-y-2 sm:col-span-2">
+        <Label htmlFor={`members.${index}.educationLevel`}>Studying in</Label>
+        <Select
+          value={educationLevel}
+          onValueChange={(v) => form.setValue(`members.${index}.educationLevel`, v as "school" | "college")}
+        >
+          <SelectTrigger id={`members.${index}.educationLevel`} className="w-full sm:w-64">
+            <SelectValue placeholder="Select education level" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="school">School</SelectItem>
+            <SelectItem value="college">College / university</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
       <div className="space-y-2">
-        <Label htmlFor={`members.${index}.college`}>College / institution</Label>
-        <Input id={`members.${index}.college`} placeholder="e.g. IIT Bombay" {...form.register(`members.${index}.college`)} />
+        <Label htmlFor={`members.${index}.college`}>{educationLevel === "school" ? "School name" : "College / institution"}</Label>
+        <Input
+          id={`members.${index}.college`}
+          placeholder={educationLevel === "school" ? "e.g. Delhi Public School" : "e.g. IIT Bombay"}
+          {...form.register(`members.${index}.college`)}
+        />
         <FieldError err={errors?.college} />
       </div>
-      <div className="space-y-2">
-        <Label htmlFor={`members.${index}.rollNumber`}>College roll number</Label>
-        <Input id={`members.${index}.rollNumber`} {...form.register(`members.${index}.rollNumber`)} />
-        <p className="text-xs text-muted-foreground">Enter your roll number as issued by your institution.</p>
-        <FieldError err={errors?.rollNumber} />
-      </div>
+      {educationLevel === "school" ? (
+        <div className="space-y-2">
+          <Label htmlFor={`members.${index}.classGrade`}>Class / grade</Label>
+          <Input id={`members.${index}.classGrade`} placeholder="e.g. Class 10" {...form.register(`members.${index}.classGrade`)} />
+          <FieldError err={errors?.classGrade} />
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <Label htmlFor={`members.${index}.rollNumber`}>College roll number</Label>
+          <Input id={`members.${index}.rollNumber`} {...form.register(`members.${index}.rollNumber`)} />
+          <p className="text-xs text-muted-foreground">Enter your roll number as issued by your institution.</p>
+          <FieldError err={errors?.rollNumber} />
+        </div>
+      )}
       <div className="space-y-2">
         <Label htmlFor={`members.${index}.email`}>Email address</Label>
         <Input type="email" id={`members.${index}.email`} placeholder="you@college.edu" {...form.register(`members.${index}.email`)} />

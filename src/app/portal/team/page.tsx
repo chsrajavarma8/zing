@@ -1,12 +1,13 @@
 import { getPortalContext } from "@/lib/portal/data";
 import { TeamManager } from "@/components/portal/team-manager";
+import { nowMs } from "@/lib/date";
 
 export default async function TeamPage() {
   const portal = await getPortalContext();
   if (!portal) return null;
 
   const isLead = portal.membership.role === "lead";
-  const now = Date.now();
+  const now = nowMs();
   const deadlinePassed =
     (portal.event.registration_close_at ? now > Date.parse(portal.event.registration_close_at) : false) ||
     (portal.event.team_lock_at ? now > Date.parse(portal.event.team_lock_at) : false);

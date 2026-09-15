@@ -36,8 +36,10 @@ import type { Team, TeamMember, Event } from "@/types/database";
 const EMPTY = {
   fullName: "",
   dateOfBirth: "",
+  educationLevel: "college" as "school" | "college",
   college: "",
   rollNumber: "",
+  classGrade: "",
   email: "",
   mobile: "",
   whatsapp: "",
@@ -314,8 +316,36 @@ export function TeamManager({
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Input placeholder="Full name" required value={form.fullName} onChange={(e) => setForm((f) => ({ ...f, fullName: e.target.value }))} />
                   <Input type="date" required value={form.dateOfBirth} onChange={(e) => setForm((f) => ({ ...f, dateOfBirth: e.target.value }))} />
-                  <Input placeholder="College" required value={form.college} onChange={(e) => setForm((f) => ({ ...f, college: e.target.value }))} />
-                  <Input placeholder="Roll number" required value={form.rollNumber} onChange={(e) => setForm((f) => ({ ...f, rollNumber: e.target.value }))} />
+                  <Select value={form.educationLevel} onValueChange={(v) => setForm((f) => ({ ...f, educationLevel: v as "school" | "college" }))}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Studying in" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="school">School</SelectItem>
+                      <SelectItem value="college">College / university</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    placeholder={form.educationLevel === "school" ? "School name" : "College"}
+                    required
+                    value={form.college}
+                    onChange={(e) => setForm((f) => ({ ...f, college: e.target.value }))}
+                  />
+                  {form.educationLevel === "school" ? (
+                    <Input
+                      placeholder="Class / grade"
+                      required
+                      value={form.classGrade}
+                      onChange={(e) => setForm((f) => ({ ...f, classGrade: e.target.value }))}
+                    />
+                  ) : (
+                    <Input
+                      placeholder="Roll number"
+                      required
+                      value={form.rollNumber}
+                      onChange={(e) => setForm((f) => ({ ...f, rollNumber: e.target.value }))}
+                    />
+                  )}
                   <Input placeholder="Email" type="email" required value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
                   <div className="flex items-center gap-2">
                     <span className="flex h-9 shrink-0 items-center rounded-md border bg-muted px-3 text-sm text-muted-foreground">+91</span>

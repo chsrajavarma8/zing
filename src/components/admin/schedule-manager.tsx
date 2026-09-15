@@ -16,7 +16,7 @@ import type { ScheduleExtraItem } from "@/lib/schedule-extras";
 import { toISTDatetimeLocalValue, fromISTDatetimeLocalValue } from "@/lib/date";
 import type { Event, Round } from "@/types/database";
 
-const ROUND_LABELS: Record<string, string> = { minor: "Minor Round (Talent)", intermediate: "Intermediate Round", major: "Major Round" };
+const ROUND_LABELS: Record<string, string> = { minor: "Talent Round", intermediate: "Intermediate Round", major: "Major Round" };
 
 function RegistrationSchedule({ event, readOnly }: { event: Event; readOnly: boolean }) {
   const [values, setValues] = useState({

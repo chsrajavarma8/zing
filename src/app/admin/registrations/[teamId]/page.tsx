@@ -68,8 +68,12 @@ export default async function TeamDetailPage({ params }: { params: Promise<{ tea
               <Field label="Email" value={m.email} />
               <Field label="Mobile" value={m.mobile} />
               <Field label="WhatsApp" value={m.whatsapp} />
-              <Field label="College" value={m.college} />
-              <Field label="Roll number" value={m.roll_number} />
+              <Field label={m.education_level === "school" ? "School" : "College"} value={m.college} />
+              {m.education_level === "school" ? (
+                <Field label="Class / grade" value={m.class_grade || "—"} />
+              ) : (
+                <Field label="Roll number" value={m.roll_number || "—"} />
+              )}
               <Field label="Date of birth" value={formatDate(m.date_of_birth)} />
               {m.gender && <Field label="Gender" value={m.gender} />}
               <Field label="Registered" value={formatDateTime(m.created_at)} />

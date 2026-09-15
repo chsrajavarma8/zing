@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 // page can reach every other round, not just the two sharing /rounds/advanced.
 export function RoundNavTabs({ active }: { active: "minor" | "intermediate" | "major" }) {
   const items = [
-    { key: "minor" as const, label: "Minor", href: "/rounds/minor" },
+    { key: "minor" as const, label: "Talent", href: "/rounds/minor" },
     { key: "intermediate" as const, label: "Intermediate", href: "/rounds/advanced?round=intermediate" },
     { key: "major" as const, label: "Major", href: "/rounds/advanced?round=major" },
   ];

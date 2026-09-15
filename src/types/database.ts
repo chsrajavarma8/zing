@@ -68,8 +68,10 @@ export interface TeamMember {
   reference_id: string;
   full_name: string;
   date_of_birth: string;
+  education_level: "school" | "college";
   college: string;
-  roll_number: string;
+  roll_number: string | null;
+  class_grade: string | null;
   email: string;
   mobile: string;
   whatsapp: string;

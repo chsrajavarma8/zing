@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { participantSchema, validateWhatsapp } from "@/lib/validations/registration";
+import { participantSchema, validateWhatsapp, validateEducationFields } from "@/lib/validations/registration";
 import { normalizePhoneInput } from "@/lib/phone";
 import { provisionParticipantAccount, resyncTempPasswordsForTeam } from "@/lib/auth/participant-provisioning";
 import { requirePasswordChanged } from "@/lib/auth/guards";
@@ -38,6 +38,10 @@ async function assertTeamMutable(eventId: string): Promise<string | null> {
 const newMemberSchema = participantSchema.omit({ role: true }).superRefine((m, ctx) => {
   if (!validateWhatsapp(m)) {
     ctx.addIssue({ code: "custom", message: "Enter a valid WhatsApp number", path: ["whatsapp"] });
+  }
+  const educationIssue = validateEducationFields(m);
+  if (educationIssue) {
+    ctx.addIssue({ code: "custom", message: educationIssue.message, path: [educationIssue.field] });
   }
 });
 
@@ -92,8 +96,10 @@ export async function addTeamMember(teamId: string, eventId: string, input: z.in
       role: "member",
       full_name: m.fullName,
       date_of_birth: m.dateOfBirth,
+      education_level: m.educationLevel,
       college: m.college,
-      roll_number: m.rollNumber,
+      roll_number: m.educationLevel === "college" ? m.rollNumber || null : null,
+      class_grade: m.educationLevel === "school" ? m.classGrade || null : null,
       email: m.email.toLowerCase(),
       mobile: m.mobile,
       whatsapp: m.whatsappSameAsMobile ? m.mobile : normalizePhoneInput(m.whatsapp),

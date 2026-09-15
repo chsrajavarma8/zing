@@ -8,8 +8,10 @@ import { revalidatePath } from "next/cache";
 export interface ProfileUpdateInput {
   fullName: string;
   dateOfBirth: string;
+  educationLevel: "school" | "college";
   college: string;
   rollNumber: string;
+  classGrade: string;
   mobile: string;
   whatsapp: string;
   whatsappSameAsMobile: boolean;
@@ -19,6 +21,12 @@ export interface ProfileUpdateInput {
 export async function updateMyProfile(memberId: string, input: ProfileUpdateInput) {
   if (input.gender && !isGenderOption(input.gender)) {
     return { ok: false, error: "Choose a valid gender option." };
+  }
+  if (input.educationLevel === "college" && !input.rollNumber.trim()) {
+    return { ok: false, error: "Enter your college roll number." };
+  }
+  if (input.educationLevel === "school" && !input.classGrade.trim()) {
+    return { ok: false, error: "Enter your class or grade." };
   }
 
   // Never trust the client alone here: this action, unlike registration, has
@@ -42,8 +50,10 @@ export async function updateMyProfile(memberId: string, input: ProfileUpdateInpu
     .update({
       full_name: input.fullName,
       date_of_birth: input.dateOfBirth,
+      education_level: input.educationLevel,
       college: input.college,
-      roll_number: input.rollNumber,
+      roll_number: input.educationLevel === "college" ? input.rollNumber || null : null,
+      class_grade: input.educationLevel === "school" ? input.classGrade || null : null,
       mobile,
       whatsapp,
       whatsapp_same_as_mobile: input.whatsappSameAsMobile,

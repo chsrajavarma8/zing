@@ -25,7 +25,7 @@ export default async function PrizesPage() {
 
   const supabase = await createClient();
   const [{ data: block }, { data: rounds }] = await Promise.all([
-    supabase.from("content_blocks").select("content").eq("event_id", event.id).eq("key", "prizes").maybeSingle(),
+    supabase.from("content_blocks").select("content").eq("event_id", event.id).eq("key", "prize_tiers").maybeSingle(),
     supabase.from("rounds").select("*").eq("event_id", event.id).order("order_index"),
   ]);
 

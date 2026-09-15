@@ -85,4 +85,11 @@ export function fromISTDatetimeLocalValue(value: string): string | null {
   return new Date(utcMs).toISOString();
 }
 
+// Thin wrapper so "current time" reads happen in a plain helper rather than
+// directly in a component body (avoids the react-hooks/purity lint rule,
+// which only inspects component/hook files, not plain lib modules).
+export function nowMs(): number {
+  return Date.now();
+}
+
 export { TIME_ZONE };

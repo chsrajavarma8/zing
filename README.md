@@ -214,3 +214,16 @@ widget, etc.), a consent banner becomes required at that point, not before.
   environment variable (Vercel sets its side of this automatically) so the endpoint rejects
   unauthenticated calls. Locally, or before deployment, scheduled notifications are saved but not
   dispatched.
+- **Mentor/judge counts** (homepage "15+ mentors" / "8+ judges") are a hardcoded organizer-provided
+  fact in `src/lib/event-facts.ts`, not a database-backed roster — there is no admin UI to list
+  individual mentors/judges yet. Update that file if the confirmed counts change; wire up a real
+  roster (with the "Lineup to be announced" fallback preserved) if named profiles are supplied.
+- **Eligibility copy** ("students aged 10 and above... no upper age limit", also in
+  `src/lib/event-facts.ts`) reflects a working assumption pending organizer sign-off — see this
+  repo's task handoff notes. It intentionally does not enforce an age check anywhere in
+  registration; add one only once the organizer confirms exact eligibility rules.
+- **School vs. college registration** (`team_members.education_level`, added in migration `0040`):
+  school participants provide a class/grade instead of a college roll number. The `prize_tiers` and
+  `hero`/`about`/`eligibility` `content_blocks` rows are still only editable via SQL/migration, not
+  from the admin panel — same limitation as the Privacy/Terms drafts above, just not yet surfaced in
+  Admin → Content & Policies.

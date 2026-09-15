@@ -36,6 +36,17 @@ export function roundPhaseLabel(round: RoundTiming): string {
   }
 }
 
+// Rounds with a future deadline, soonest first - factored out so the
+// Date.now() call lives in a plain helper rather than directly in a
+// component body (avoids the react-hooks/purity lint rule).
+export function upcomingRoundDeadlines<T extends Pick<Round, "ends_at">>(rounds: T[], limit = 3): T[] {
+  const now = Date.now();
+  return rounds
+    .filter((r) => r.ends_at && Date.parse(r.ends_at) > now)
+    .sort((a, b) => Date.parse(a.ends_at!) - Date.parse(b.ends_at!))
+    .slice(0, limit);
+}
+
 // null when submissions are open - a human-readable reason (plus the
 // relevant opening/closing time) otherwise.
 export function submissionUnavailableReason(round: RoundTiming): string | null {

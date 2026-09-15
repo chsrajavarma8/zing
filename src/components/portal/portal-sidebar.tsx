@@ -2,10 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import {
   LayoutDashboard,
   UserRound,
@@ -18,7 +16,6 @@ import {
   IdCard,
   FileText,
   MessageSquareHeart,
-  Menu,
   LogOut,
   Sparkles,
   LifeBuoy,
@@ -113,8 +110,6 @@ export function PortalSidebar({
   unreadCount?: number;
   role: "lead" | "member";
 }) {
-  const [open, setOpen] = useState(false);
-
   return (
     <>
       <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-primary/12 bg-cream p-4 lg:flex">
@@ -144,35 +139,7 @@ export function PortalSidebar({
           <Sparkles className="h-5 w-5 text-primary" />
           <span className="truncate">{eventName}</span>
         </Link>
-        <Sheet open={open} onOpenChange={setOpen}>
-          <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Open menu" className="relative">
-              <Menu className="h-5 w-5" />
-              {unreadCount > 0 && (
-                <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-primary" aria-hidden />
-              )}
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="w-72 bg-cream">
-            <SheetTitle className="px-4 pt-4">Menu</SheetTitle>
-            <div className="px-4">
-              <RoleBadge role={role} />
-            </div>
-            <div className="mt-4 px-4">
-              <NavLinks onNavigate={() => setOpen(false)} unreadCount={unreadCount} />
-              <div className="mt-4 space-y-1 border-t border-primary/12 pt-3">
-                <Link
-                  href="/contact"
-                  onClick={() => setOpen(false)}
-                  className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-burgundy/65 hover:bg-primary/8 hover:text-burgundy"
-                >
-                  <LifeBuoy className="h-4 w-4" /> Need help? Contact
-                </Link>
-                <SignOutButton />
-              </div>
-            </div>
-          </SheetContent>
-        </Sheet>
+        <RoleBadge role={role} />
       </div>
     </>
   );

@@ -4,7 +4,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { RoundEditor } from "@/components/admin/round-editor";
 import type { Round } from "@/types/database";
 
-const LABELS: Record<string, string> = { minor: "Minor", intermediate: "Intermediate", major: "Major" };
+const LABELS: Record<string, string> = { minor: "Talent", intermediate: "Intermediate", major: "Major" };
 
 // One compact tabbed section instead of three always-expanded, near-identical
 // cards stacked on the page - only the selected round's editor is shown.

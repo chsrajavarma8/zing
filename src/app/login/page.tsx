@@ -106,7 +106,8 @@ function LoginPageInner() {
             </Button>
             <p className="flex items-start gap-2 text-xs text-muted-foreground">
               <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              Your password is stored and verified by Supabase Auth: never saved anywhere else.
+              Your password is encrypted in transit and at rest. Organizers can reset your access if you&apos;re
+              locked out, but they can never see your password.
             </p>
 
             <Accordion type="single" collapsible className="rounded-md border px-3">

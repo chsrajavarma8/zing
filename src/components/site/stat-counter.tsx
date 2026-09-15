@@ -7,18 +7,20 @@ export function StatCounter({ value, label }: { value: number; label: string }) 
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (prefersReduced) {
-      setDisplay(value);
-      return;
-    }
-
     const el = ref.current;
     if (!el) return;
+    const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (!entry.isIntersecting) return;
+        observer.disconnect();
+
+        if (prefersReduced) {
+          setDisplay(value);
+          return;
+        }
+
         const start = performance.now();
         const duration = 900;
         function tick(now: number) {
@@ -28,7 +30,6 @@ export function StatCounter({ value, label }: { value: number; label: string }) 
           if (progress < 1) requestAnimationFrame(tick);
         }
         requestAnimationFrame(tick);
-        observer.disconnect();
       },
       { threshold: 0.4 },
     );

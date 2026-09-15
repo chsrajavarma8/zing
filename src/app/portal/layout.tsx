@@ -4,6 +4,7 @@ import { getUserContext } from "@/lib/auth/session";
 import { getPortalContext } from "@/lib/portal/data";
 import { createClient } from "@/lib/supabase/server";
 import { PortalSidebar } from "@/components/portal/portal-sidebar";
+import { PortalBottomNav } from "@/components/portal/portal-bottom-nav";
 import { SkipLink } from "@/components/site/skip-link";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -58,9 +59,10 @@ export default async function PortalLayout({ children }: { children: React.React
     <div className="flex min-h-screen">
       <SkipLink />
       <PortalSidebar eventName={portal.event.name} unreadCount={count ?? 0} role={portal.membership.role} />
-      <main id="main-content" className="flex-1 overflow-x-hidden px-4 py-6 sm:px-8 sm:py-8">
+      <main id="main-content" className="flex-1 overflow-x-hidden px-4 py-6 pb-24 sm:px-8 sm:py-8 lg:pb-8">
         <div className="mx-auto max-w-5xl">{children}</div>
       </main>
+      <PortalBottomNav unreadCount={count ?? 0} />
     </div>
   );
 }
