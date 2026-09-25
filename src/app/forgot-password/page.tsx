@@ -21,7 +21,9 @@ export default async function ForgotPasswordPage() {
           <Link href="/login" className="mb-4 inline-flex w-fit items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground">
             <ArrowLeft className="h-4 w-4" /> Back to sign in
           </Link>
-          <CardTitle className="font-heading text-2xl">Need help signing in?</CardTitle>
+          <CardTitle className="font-heading text-2xl">
+            <h1>Need help signing in?</h1>
+          </CardTitle>
           <CardDescription>Contact support: our team will verify your identity and help you regain access.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

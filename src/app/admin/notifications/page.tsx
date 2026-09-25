@@ -5,7 +5,7 @@ import { CancelNotificationButton } from "@/components/admin/cancel-notification
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatDateTime } from "@/lib/date";
+import { formatDateTime, nowMs } from "@/lib/date";
 import type { Round, Team } from "@/types/database";
 
 export default async function AdminNotificationsPage() {
@@ -50,26 +50,33 @@ export default async function AdminNotificationsPage() {
             </TableHeader>
             <TableBody>
               {(notifications as unknown as
-                | { id: string; title: string; audience_type: string; priority: string; channels: string[]; sent_at: string | null; created_at: string }[]
+                | { id: string; title: string; audience_type: string; priority: string; channels: string[]; sent_at: string | null; scheduled_at: string | null; created_at: string }[]
                 | null
-              )?.map((n) => (
-                <TableRow key={n.id}>
-                  <TableCell className="font-medium">{n.title}</TableCell>
-                  <TableCell className="capitalize">{n.audience_type.replace("_", " ")}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="capitalize">{n.priority}</Badge>
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{n.channels.join(", ")}</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {n.sent_at ? formatDateTime(n.sent_at) : "Scheduled"}
-                  </TableCell>
-                  <TableCell>
-                    {!n.sent_at && canManage(ctx) && (
-                      <CancelNotificationButton notificationId={n.id} eventId={ctx.event.id} title={n.title} />
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
+              )?.map((n) => {
+                // Delivery is time-based: recipients see a scheduled
+                // notification from scheduled_at onwards (0043).
+                const pending = !n.sent_at && n.scheduled_at !== null && Date.parse(n.scheduled_at) > nowMs();
+                return (
+                  <TableRow key={n.id}>
+                    <TableCell className="font-medium">{n.title}</TableCell>
+                    <TableCell className="capitalize">{n.audience_type.replace("_", " ")}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="capitalize">{n.priority}</Badge>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{n.channels.join(", ")}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {pending
+                        ? `Scheduled for ${formatDateTime(n.scheduled_at)}`
+                        : formatDateTime(n.sent_at ?? n.scheduled_at ?? n.created_at)}
+                    </TableCell>
+                    <TableCell>
+                      {pending && canManage(ctx) && (
+                        <CancelNotificationButton notificationId={n.id} eventId={ctx.event.id} title={n.title} />
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
           {(!notifications || notifications.length === 0) && (

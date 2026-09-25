@@ -80,12 +80,12 @@ export function NotificationComposer({ eventId, rounds, teams }: { eventId: stri
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
-          <Label>Title</Label>
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+          <Label htmlFor="notif-title">Title</Label>
+          <Input id="notif-title" value={title} onChange={(e) => setTitle(e.target.value)} />
         </div>
         <div className="space-y-2">
-          <Label>Message</Label>
-          <Textarea rows={4} value={message} onChange={(e) => setMessage(e.target.value)} />
+          <Label htmlFor="notif-message">Message</Label>
+          <Textarea id="notif-message" rows={4} value={message} onChange={(e) => setMessage(e.target.value)} />
         </div>
 
         {(title || message) && (
@@ -160,8 +160,8 @@ export function NotificationComposer({ eventId, rounds, teams }: { eventId: stri
 
         {audienceType === "individual" && (
           <div className="space-y-2">
-            <Label>Emails (comma or newline separated)</Label>
-            <Textarea rows={3} value={emails} onChange={(e) => setEmails(e.target.value)} />
+            <Label htmlFor="notif-emails">Emails (comma or newline separated)</Label>
+            <Textarea id="notif-emails" rows={3} value={emails} onChange={(e) => setEmails(e.target.value)} />
           </div>
         )}
 
@@ -184,13 +184,13 @@ export function NotificationComposer({ eventId, rounds, teams }: { eventId: stri
         )}
 
         <div className="space-y-2">
-          <Label>Action link (optional)</Label>
-          <Input value={actionLink} onChange={(e) => setActionLink(e.target.value)} placeholder="/portal/submission" />
+          <Label htmlFor="notif-link">Action link (optional)</Label>
+          <Input id="notif-link" value={actionLink} onChange={(e) => setActionLink(e.target.value)} placeholder="/portal/submission" />
         </div>
 
         <div className="space-y-2">
-          <Label>Schedule for later (optional, IST)</Label>
-          <Input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} className="w-full sm:w-64" />
+          <Label htmlFor="notif-schedule">Schedule for later (optional, IST)</Label>
+          <Input id="notif-schedule" type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} className="w-full sm:w-64" />
           <p className="text-xs text-muted-foreground">
             Leave blank to send immediately. Scheduled sends are dispatched by a cron job that only runs once this
             app is deployed to Vercel: see README for setup.

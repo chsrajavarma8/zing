@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { registrationSchema } from "@/lib/validations/registration";
-import { provisionParticipantAccount } from "@/lib/auth/participant-provisioning";
-import { rateLimit } from "@/lib/rate-limit";
+import { inviteParticipant } from "@/lib/auth/participant-provisioning";
+import { clientIp, sharedRateLimit } from "@/lib/rate-limit";
 import { normalizePhoneInput } from "@/lib/phone";
+import { validateExtraFields, type CustomFieldConfig } from "@/lib/registration-fields";
 
 export async function POST(req: NextRequest) {
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-  const limited = rateLimit(`register:${ip}`, 5, 10 * 60 * 1000);
+  const ip = clientIp(req.headers);
+  const limited = await sharedRateLimit(`register:${ip}`, 5, 10 * 60 * 1000);
   if (!limited.ok) {
     return NextResponse.json(
       { error: "Too many registration attempts. Please try again later." },
@@ -107,6 +108,20 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Organizer-configured custom fields are validated against the event's
+  // active configuration (BUG-026): unknown keys are dropped, required values
+  // enforced, types and sizes checked.
+  const { data: fieldRows, error: fieldsError } = await admin
+    .from("registration_fields")
+    .select("key, label, field_type, required, options")
+    .eq("event_id", input.eventId)
+    .eq("active", true);
+  if (fieldsError) {
+    return NextResponse.json({ error: "Could not load the registration form. Please try again." }, { status: 500 });
+  }
+  const extra = validateExtraFields((fieldRows as unknown as CustomFieldConfig[] | null) ?? [], input.extraFields);
+  if (!extra.ok) return NextResponse.json({ error: extra.error }, { status: 422 });
+
   const { data: currentPolicies } = await admin
     .from("policy_versions")
     .select("id, type")
@@ -118,7 +133,7 @@ export async function POST(req: NextRequest) {
 
   const { data: team, error: teamError } = await admin
     .from("teams")
-    .insert({ event_id: input.eventId, team_name: input.teamName, extra_fields: input.extraFields, status: "pending" })
+    .insert({ event_id: input.eventId, team_name: input.teamName, extra_fields: extra.values, status: "pending" })
     .select("id, reference_id")
     .single();
 
@@ -186,32 +201,13 @@ export async function POST(req: NextRequest) {
 
   const lead = members.find((m) => m.role === "lead");
 
-  // Account creation happens synchronously here, server-side only, using a
-  // deterministic temporary password - no email of any kind is sent as part
-  // of registration. Each participant computes their own temporary password
-  // from details only they (and whoever filled in this form) know; see the
-  // "First-time login instructions" on the sign-in page.
-  const provisionResults = await Promise.all(
-    members.map((m) =>
-      provisionParticipantAccount({
-        email: m.email,
-        teamName: input.teamName,
-        fullName: m.full_name,
-        dateOfBirth: m.date_of_birth,
-      }),
-    ),
-  );
-
-  // Only a brand-new account gets linked immediately - if the email already
-  // belongs to someone else's existing account, it's linked later, only once
-  // that account's real owner proves ownership by signing in with their own
-  // password (see the link-sweep in src/app/login/actions.ts).
-  await Promise.all(
-    provisionResults.map((outcome, i) =>
-      outcome.status === "created"
-        ? admin.from("team_members").update({ profile_id: outcome.profileId }).eq("id", members[i].id)
-        : Promise.resolve(),
-    ),
+  // Each member receives a Supabase invitation email and sets their own
+  // password from that link (BUG-010): no address is confirmed on the
+  // registrant's behalf and no password is derived from registration details.
+  // An email that already has an account is linked when its owner signs in
+  // with a confirmed email (src/app/login/actions.ts).
+  const inviteResults = await Promise.all(
+    members.map((m) => inviteParticipant({ email: m.email, fullName: m.full_name, teamMemberId: m.id })),
   );
 
   return NextResponse.json({
@@ -221,7 +217,7 @@ export async function POST(req: NextRequest) {
       email: m.email,
       fullName: m.full_name,
       role: m.role,
-      accountReady: provisionResults[i].status !== "failed",
+      accountStatus: inviteResults[i].status,
     })),
     leadEmail: lead?.email,
   });

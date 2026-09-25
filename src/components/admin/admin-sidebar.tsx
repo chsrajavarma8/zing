@@ -6,7 +6,7 @@ import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
+import { AppHeader } from "@/components/site/app-header";
 import { createClient } from "@/lib/supabase/client";
 import {
   LayoutDashboard,
@@ -22,110 +22,146 @@ import {
   ShieldCheck,
   ScrollText,
   IdCard,
-  Menu,
   LogOut,
   Sparkles,
   MessageSquareHeart,
   KeyRound,
   History,
   CalendarClock,
+  type LucideIcon,
 } from "lucide-react";
 
-const LINKS = [
-  { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/admin/events", label: "Event & Branding", icon: Settings2 },
-  { href: "/admin/registrations", label: "Registrations", icon: Users },
-  { href: "/admin/rounds", label: "Rounds", icon: Trophy },
-  { href: "/admin/schedule", label: "Schedule", icon: CalendarClock },
-  { href: "/admin/submissions", label: "Submissions", icon: FolderGit2 },
-  { href: "/admin/judging", label: "Judging & Scores", icon: Gavel },
-  { href: "/admin/notifications", label: "Notifications", icon: Bell },
-  { href: "/admin/content", label: "Content & Policies", icon: Newspaper },
-  { href: "/admin/documents", label: "Documents", icon: FileText },
-  { href: "/admin/requests", label: "Requests", icon: Inbox },
-  { href: "/admin/feedback", label: "Feedback", icon: MessageSquareHeart },
-  { href: "/admin/id-cards", label: "ID Cards", icon: IdCard },
-  { href: "/admin/roles", label: "Roles & Admins", icon: ShieldCheck },
-  { href: "/admin/login-activity", label: "Login Activity", icon: History },
-  { href: "/admin/audit-logs", label: "Audit Log", icon: ScrollText },
-  { href: "/admin/account", label: "Account", icon: KeyRound },
+type NavLink = { href: string; label: string; icon: LucideIcon };
+
+const SECTIONS: { title: string; links: NavLink[] }[] = [
+  {
+    title: "Overview",
+    links: [{ href: "/admin", label: "Dashboard", icon: LayoutDashboard }],
+  },
+  {
+    title: "Participants",
+    links: [
+      { href: "/admin/registrations", label: "Registrations", icon: Users },
+      { href: "/admin/requests", label: "Requests", icon: Inbox },
+      { href: "/admin/id-cards", label: "ID Cards", icon: IdCard },
+      { href: "/admin/feedback", label: "Feedback", icon: MessageSquareHeart },
+    ],
+  },
+  {
+    title: "Competition",
+    links: [
+      { href: "/admin/rounds", label: "Rounds", icon: Trophy },
+      { href: "/admin/schedule", label: "Schedule", icon: CalendarClock },
+      { href: "/admin/submissions", label: "Submissions", icon: FolderGit2 },
+      { href: "/admin/judging", label: "Judging & Scores", icon: Gavel },
+    ],
+  },
+  {
+    title: "Communication",
+    links: [
+      { href: "/admin/notifications", label: "Notifications", icon: Bell },
+      { href: "/admin/content", label: "Content & Policies", icon: Newspaper },
+      { href: "/admin/documents", label: "Documents", icon: FileText },
+    ],
+  },
+  {
+    title: "Settings",
+    links: [
+      { href: "/admin/events", label: "Event & Branding", icon: Settings2 },
+      { href: "/admin/roles", label: "Roles & Admins", icon: ShieldCheck },
+      { href: "/admin/login-activity", label: "Login Activity", icon: History },
+      { href: "/admin/audit-logs", label: "Audit Log", icon: ScrollText },
+      { href: "/admin/account", label: "Account", icon: KeyRound },
+    ],
+  },
 ];
 
-function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
+function isActive(pathname: string, href: string) {
+  return pathname === href || (href !== "/admin" && pathname.startsWith(`${href}/`));
+}
+
+function useSignOut(onDone?: () => void) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  async function signOut() {
+    setBusy(true);
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    onDone?.();
+    router.replace("/");
+    router.refresh();
+  }
+  return { busy, signOut };
+}
+
+function SidebarBody({ role, eventName, onNavigate }: { role: string; eventName: string; onNavigate?: () => void }) {
   const pathname = usePathname();
+  const { busy, signOut } = useSignOut(onNavigate);
+
   return (
-    <nav className="flex flex-col gap-0.5">
-      {LINKS.map((link) => {
-        const Icon = link.icon;
-        const active = pathname === link.href;
-        return (
-          <Link
-            key={link.href}
-            href={link.href}
-            onClick={onNavigate}
-            className={cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-burgundy/65 transition-all duration-200",
-              active ? "bg-primary text-primary-foreground shadow-sm" : "hover:bg-primary/8 hover:text-burgundy",
-            )}
-          >
-            <Icon className="h-4 w-4 shrink-0" />
-            {link.label}
-          </Link>
-        );
-      })}
-    </nav>
+    <div className="flex h-full flex-col">
+      <Link
+        href="/admin"
+        onClick={onNavigate}
+        className="flex items-center gap-2 px-3 pr-10 pt-1 font-heading text-lg font-semibold text-burgundy lg:pr-3"
+      >
+        <Sparkles className="h-5 w-5 shrink-0 text-primary" />
+        <span className="truncate">{eventName}</span>
+      </Link>
+      <div className="mt-1 flex items-center gap-2 px-3">
+        <span className="text-xs text-burgundy/55">Admin panel</span>
+        <Badge variant="outline" className="capitalize">{role.replace("_", " ")}</Badge>
+      </div>
+
+      <nav aria-label="Admin" className="-mx-1 mt-4 flex-1 overflow-y-auto px-1">
+        {SECTIONS.map((section) => (
+          <div key={section.title} className="mb-4">
+            <p className="mb-1 px-3 text-[11px] font-semibold uppercase tracking-wider text-burgundy/45">{section.title}</p>
+            <ul className="flex flex-col gap-0.5">
+              {section.links.map((link) => {
+                const Icon = link.icon;
+                const active = isActive(pathname, link.href);
+                return (
+                  <li key={link.href}>
+                    <Link
+                      href={link.href}
+                      onClick={onNavigate}
+                      aria-current={active ? "page" : undefined}
+                      className={cn(
+                        "flex min-h-10 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors duration-200",
+                        active ? "bg-primary text-primary-foreground shadow-sm" : "text-burgundy/70 hover:bg-primary/8 hover:text-burgundy",
+                      )}
+                    >
+                      <Icon className="h-4 w-4 shrink-0" aria-hidden />
+                      {link.label}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ))}
+      </nav>
+
+      {/* Sign-out at every viewport width (BUG-021). */}
+      <div className="border-t border-primary/12 pt-3">
+        <Button
+          variant="ghost"
+          className="min-h-10 w-full justify-start gap-3 px-3 font-medium text-burgundy/70 hover:text-burgundy"
+          disabled={busy}
+          onClick={signOut}
+        >
+          <LogOut className="h-4 w-4" aria-hidden /> {busy ? "Signing out…" : "Sign out"}
+        </Button>
+      </div>
+    </div>
   );
 }
 
-export function AdminSidebar({ role }: { role: string }) {
-  const [open, setOpen] = useState(false);
-  const router = useRouter();
-
+export function AdminSidebar({ role, eventName }: { role: string; eventName: string }) {
   return (
-    <>
-      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 flex-col border-r border-primary/12 bg-cream p-4 lg:flex">
-        <div className="mb-2 flex items-center gap-2 px-2 font-heading font-semibold text-burgundy">
-          <Sparkles className="h-5 w-5 text-primary" />
-          Admin
-        </div>
-        <Badge variant="outline" className="mb-4 w-fit capitalize">{role.replace("_", " ")}</Badge>
-        <div className="flex-1 overflow-y-auto">
-          <NavLinks />
-        </div>
-        <div className="border-t border-primary/12 pt-3">
-          <Button
-            variant="ghost"
-            className="w-full justify-start gap-3 text-burgundy/65 hover:text-burgundy"
-            onClick={async () => {
-              const supabase = createClient();
-              await supabase.auth.signOut();
-              router.replace("/");
-              router.refresh();
-            }}
-          >
-            <LogOut className="h-4 w-4" /> Sign out
-          </Button>
-        </div>
-      </aside>
-
-      <div className="sticky top-0 z-40 flex items-center justify-between border-b border-primary/12 bg-cream/95 p-3 backdrop-blur lg:hidden">
-        <div className="flex items-center gap-2 font-heading font-semibold text-burgundy">
-          <Sparkles className="h-5 w-5 text-primary" /> Admin
-        </div>
-        <Sheet open={open} onOpenChange={setOpen}>
-          <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Open menu">
-              <Menu className="h-5 w-5" />
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="w-72 bg-cream">
-            <SheetTitle className="px-4 pt-4">Admin menu</SheetTitle>
-            <div className="mt-4 px-4">
-              <NavLinks onNavigate={() => setOpen(false)} />
-            </div>
-          </SheetContent>
-        </Sheet>
-      </div>
-    </>
+    <AppHeader eventName={eventName} homeHref="/admin" menuTitle="Admin menu">
+      {(close) => <SidebarBody role={role} eventName={eventName} onNavigate={close} />}
+    </AppHeader>
   );
 }

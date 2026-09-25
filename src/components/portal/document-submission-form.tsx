@@ -23,11 +23,13 @@ import { AlertCircle, CheckCircle2, ExternalLink, Loader2, Lock, FileText, Uploa
 import { toast } from "sonner";
 import { saveDocumentLink, deleteSubmission } from "@/app/portal/submission/actions";
 import { formatDateTime } from "@/lib/date";
+import { directUpload } from "@/lib/direct-upload";
 import type { Submission } from "@/types/database";
 
 const ACCEPTED_LABEL = "PDF, DOC, DOCX, PPT, PPTX, PNG, or JPEG";
 const ACCEPTED_ACCEPT_ATTR = ".pdf,.doc,.docx,.ppt,.pptx,.png,.jpg,.jpeg";
 const MAX_SIZE_LABEL = "25 MB";
+const MAX_SIZE_BYTES = 25 * 1024 * 1024;
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
   pending_review: "outline",
@@ -91,16 +93,24 @@ export function DocumentSubmissionForm({
     const file = e.target.files?.[0];
     if (!file) return;
     setError(null);
+    if (file.size > MAX_SIZE_BYTES) {
+      setError(`File must be under ${MAX_SIZE_LABEL}.`);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
     setUploading(true);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("teamId", teamId);
-      formData.append("roundId", roundId);
-      const res = await fetch("/api/portal/submissions/upload", { method: "POST", body: formData });
-      const body = (await res.json()) as { ok?: boolean; error?: string };
-      if (!res.ok || !body.ok) {
-        setError(body.error ?? "Upload failed.");
+      // Uploads go straight to Storage via a signed URL and are verified by
+      // the server afterwards (no 4.5 MB serverless body limit).
+      const result = await directUpload({
+        bucket: "team-submissions",
+        file,
+        urlEndpoint: "/api/portal/submissions/upload-url",
+        completeEndpoint: "/api/portal/submissions/complete",
+        extra: { teamId, roundId },
+      });
+      if (!result.ok) {
+        setError(result.error);
         return;
       }
       toast.success("Document uploaded.");

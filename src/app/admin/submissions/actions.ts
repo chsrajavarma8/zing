@@ -32,12 +32,15 @@ export async function reviewSubmission(
   const submission = existing as unknown as { team_id: string; round_id: string; rounds: { name: string } | null } | null;
   if (!submission) return { ok: false, error: "Submission not found." };
 
-  const { error } = await supabase
+  if (!["pending_review", "accepted", "rejected"].includes(reviewStatus)) return { ok: false, error: "Invalid decision." };
+
+  const { data: updated, error } = await supabase
     .from("submissions")
     .update({ review_status: reviewStatus, reviewer_notes: trimmedNotes || null, reviewed_by: ctx.user.userId, reviewed_at: new Date().toISOString() })
-    .eq("id", submissionId);
+    .eq("id", submissionId)
+    .select("id");
 
-  if (error) return { ok: false, error: "Could not save review." };
+  if (error || !updated || updated.length !== 1) return { ok: false, error: "Could not save review." };
 
   await logAudit({
     actorProfileId: ctx.user.userId,

@@ -4,6 +4,7 @@ import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import { AnalyticsPageView } from "@/components/analytics-page-view";
+import { CookieConsentBanner } from "@/components/site/cookie-consent-banner";
 import { SiteBackground } from "@/components/site/site-background";
 import { getSiteUrl } from "@/lib/site-url";
 
@@ -58,6 +59,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} ${spaceGrotesk.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
+        {/* Without JavaScript the scroll-reveal animation never runs; show the
+            content in its final state instead of leaving it at opacity 0. */}
+        <noscript>
+          <style>{"[data-reveal]{opacity:1!important;transform:none!important}"}</style>
+        </noscript>
         <TooltipProvider>
           {/* Mounted once, here, for the whole app - see the component for
               why: intensity varies by route internally rather than needing
@@ -65,6 +71,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <SiteBackground />
           <AnalyticsPageView />
           {children}
+          <CookieConsentBanner />
           <Toaster richColors closeButton position="top-right" />
         </TooltipProvider>
       </body>

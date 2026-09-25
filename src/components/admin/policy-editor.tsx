@@ -67,9 +67,9 @@ function PolicyTypeEditor({ eventId, type, label, policies }: { eventId: string;
             <AlertDescription>This is placeholder text pending organizer/legal review: it is not a legally approved policy.</AlertDescription>
           </Alert>
         )}
-        <Textarea rows={12} value={content} onChange={(e) => setContent(e.target.value)} className="font-mono text-sm" />
+        <Textarea aria-label={` text`} rows={12} value={content} onChange={(e) => setContent(e.target.value)} className="font-mono text-sm" />
         <div className="flex flex-wrap items-center gap-2">
-          <Input placeholder="Version label, e.g. 1.0" value={version} onChange={(e) => setVersion(e.target.value)} className="w-48" />
+          <Input aria-label={` version label`} placeholder="Version label, e.g. 1.0" value={version} onChange={(e) => setVersion(e.target.value)} className="w-48" />
           <Button onClick={publish} disabled={busy}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
             Publish new version

@@ -1,74 +1,75 @@
 import "server-only";
+import { randomBytes } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { generateTemporaryPassword, InvalidDateOfBirthError } from "@/lib/auth/temp-password";
+import { getSiteUrl } from "@/lib/site-url";
 
-// Every participant Supabase Auth account is created or reset from here, and
-// only ever with the service-role client - never expose that key or this
-// module to client components. No email is ever sent as part of this: the
-// temporary password is deterministic and the participant computes it
-// themselves from details only they (and whoever entered the registration
-// form) already know.
+// Participant account provisioning (BUG-002, BUG-010, RISK-002, RISK-003).
+//
+// New participants receive a Supabase Auth invitation email and set their own
+// password from that link (completed at /auth/set-password). The server never
+// confirms an address on a registrant's behalf and never derives a password
+// from registration details, so typing someone else's email into the
+// registration form grants no access to anything: only the mailbox owner can
+// use the link.
+//
+// Accounts are looked up by their verified Auth email (auth_user_id_by_email,
+// service-role only) - never by profiles.email, which older migrations let
+// users rewrite.
+//
+// REQUIREMENT: the Supabase project must have a working SMTP provider. The
+// hosted default sender only delivers to organization members, so without
+// custom SMTP every invitation fails and is reported as "failed" (never as
+// success) - see docs/SECURITY-FIXES-2026-09.md.
 
-export type ProvisionOutcome =
-  | { status: "created"; profileId: string }
-  | { status: "linked_existing"; profileId: string }
+export type InviteOutcome =
+  | { status: "invited"; profileId: string }
+  | { status: "existing_account" }
   | { status: "failed"; error: string };
 
-async function findExistingProfileId(email: string): Promise<string | null> {
-  const admin = createAdminClient();
-  // Exact match only. `ilike` treats attacker-supplied `%`/`_` as wildcards -
-  // a registration email of e.g. "a%" would pattern-match and silently
-  // adopt an unrelated existing account. `email` is already normalized
-  // (lowercased/trimmed) by the caller, and profiles.email is always stored
-  // lowercased by provisioning, so a plain equality match is correct.
-  const { data } = await admin.from("profiles").select("id").eq("email", email).maybeSingle();
-  return (data as { id: string } | null)?.id ?? null;
+export function participantSetupRedirect(): string {
+  return `${getSiteUrl()}/auth/set-password?flow=participant`;
 }
 
-// Called once per participant at registration time (or when a team lead adds
-// a member later).
+export async function findAuthUserIdByEmail(email: string): Promise<string | null> {
+  const admin = createAdminClient();
+  const { data, error } = await admin.rpc("auth_user_id_by_email", { p_email: email.toLowerCase().trim() });
+  if (error) throw new Error(`auth user lookup failed: ${error.message}`);
+  return (data as string | null) ?? null;
+}
+
+async function isStaffAccount(userId: string): Promise<boolean> {
+  const admin = createAdminClient();
+  const [{ data: platformRole, error: e1 }, { data: eventAdminRows, error: e2 }] = await Promise.all([
+    admin.from("platform_roles").select("user_id").eq("user_id", userId).maybeSingle(),
+    admin.from("event_admins").select("id").eq("user_id", userId).limit(1),
+  ]);
+  if (e1 || e2) throw new Error("could not verify account roles");
+  return Boolean(platformRole) || Boolean(eventAdminRows && eventAdminRows.length > 0);
+}
+
+// Sends a Supabase invitation for a brand-new participant account and links
+// it to `teamMemberId`. Linking the invited account immediately is safe: the
+// server created it just now, it has no password, and the only way to sign in
+// is the link delivered to that mailbox.
 //
-// If the email belongs to a brand-new account, it's created fresh here and
-// immediately linked - nobody else was using it, so there's no consent
-// concern.
-//
-// If the email already has an EXISTING account, we deliberately do NOT link
-// it here and never touch its password - attacker-submitted registration
-// data alone is not "account-owner acceptance". The existing account gets
-// linked automatically, but only at the moment its real owner successfully
-// signs in with their own password (see the link-sweep in
-// src/app/login/actions.ts) - that authentication event is the actual proof
-// of ownership this requires.
-export async function provisionParticipantAccount(params: {
+// If an account already exists for the email, nothing is linked or changed
+// here - the row is linked when that account's owner signs in with a
+// confirmed email (linkConfirmedParticipantRows).
+export async function inviteParticipant(params: {
   email: string;
-  teamName: string;
   fullName: string;
-  dateOfBirth: string;
-}): Promise<ProvisionOutcome> {
+  teamMemberId?: string;
+}): Promise<InviteOutcome> {
   const email = params.email.toLowerCase().trim();
-
-  const existingProfileId = await findExistingProfileId(email);
-  if (existingProfileId) {
-    return { status: "linked_existing", profileId: existingProfileId };
-  }
-
-  let tempPassword: string;
-  try {
-    tempPassword = generateTemporaryPassword(params);
-  } catch (err) {
-    if (err instanceof InvalidDateOfBirthError) {
-      return { status: "failed", error: "Invalid date of birth - could not create an account." };
-    }
-    throw err;
-  }
-
   const admin = createAdminClient();
 
-  // Refuse to create a participant account for an email that has a pending,
-  // unconsumed admin invitation - otherwise a participant registration could
-  // "squat" that email before the real admin completes their invite. The
-  // real admin still recovers cleanly (Supabase's invite/reset flow proves
-  // mailbox ownership regardless), but this closes the nuisance proactively.
+  try {
+    if (await findAuthUserIdByEmail(email)) return { status: "existing_account" };
+  } catch (err) {
+    console.error("[provisioning] lookup failed:", err);
+    return { status: "failed", error: "Could not check for an existing account." };
+  }
+
   const { data: pendingInvite } = await admin
     .from("admin_invites")
     .select("id")
@@ -80,156 +81,138 @@ export async function provisionParticipantAccount(params: {
     return { status: "failed", error: "This email can't be used for participant registration right now." };
   }
 
-  const { data, error } = await admin.auth.admin.createUser({
-    email,
-    password: tempPassword,
-    email_confirm: true,
-    user_metadata: { full_name: params.fullName },
+  const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
+    redirectTo: participantSetupRedirect(),
+    data: { full_name: params.fullName },
   });
 
   if (error || !data.user) {
-    return { status: "failed", error: error?.message ?? "Could not create account." };
+    if (error && (error.code === "email_exists" || /already (been )?registered/i.test(error.message))) {
+      return { status: "existing_account" };
+    }
+    console.error("[provisioning] invitation failed:", error?.code, error?.message);
+    return { status: "failed", error: "The invitation email could not be sent." };
   }
 
-  await admin.from("profiles").update({ must_change_password: true }).eq("id", data.user.id);
+  if (params.teamMemberId) {
+    const { data: linked, error: linkError } = await admin
+      .from("team_members")
+      .update({ profile_id: data.user.id })
+      .eq("id", params.teamMemberId)
+      .is("profile_id", null)
+      .select("id");
+    if (linkError || !linked || linked.length === 0) {
+      console.error("[provisioning] could not link invited account:", linkError?.message);
+      return { status: "failed", error: "The invitation was sent, but the account could not be linked. Contact support." };
+    }
+  }
 
-  return { status: "created", profileId: data.user.id };
+  return { status: "invited", profileId: data.user.id };
 }
 
-export type ResetOutcome = { ok: true } | { ok: false; error: string };
-
-// Organizer-assisted recovery: regenerates the same deterministic temporary
-// password (participants already know the formula from the sign-in page)
-// and forces another mandatory password change.
-//
-// `teamMemberId`, when given, is linked to the account (team_members.profile_id)
-// once the account is confirmed - see the `!params.profileId` branch below for
-// why that matters.
-//
-// The staff-account exclusion is enforced HERE, not only by callers - any
-// future caller of this shared function automatically gets the same
-// protection, rather than depending on every call site remembering to
-// re-implement the check itself.
-//
-// Known limitation, documented rather than silently assumed fixed: this
-// changes the account's password (which invalidates future refresh-token
-// use), but the Supabase Admin SDK has no "revoke sessions by user id" call
-// - only signOut(jwt), which needs a live token we don't have here. An
-// access token issued before this reset remains valid until its own natural
-// expiry (~1 hour) even after the reset completes.
-export async function resetParticipantAccount(params: {
-  profileId: string | null;
-  email: string;
-  teamName: string;
-  fullName: string;
-  dateOfBirth: string;
-  teamMemberId?: string;
-}): Promise<ResetOutcome> {
+// Links unlinked team_members rows to an account whose Auth email is
+// CONFIRMED. Called after a successful sign-in and after completing an
+// invitation/recovery link - both are proof of mailbox ownership for the
+// confirmed address. Also marks the linked rows verified (service role,
+// since participants can't write verification_status - BUG-005).
+export async function linkConfirmedParticipantRows(user: {
+  id: string;
+  email?: string | null;
+  email_confirmed_at?: string | null;
+}): Promise<{ ok: boolean }> {
+  if (!user.email || !user.email_confirmed_at) return { ok: true };
   const admin = createAdminClient();
-
-  // A never-linked team_members row (profile_id null) doesn't mean "no
-  // account exists" - provisionParticipantAccount deliberately leaves
-  // profile_id unlinked whenever the email already belonged to an account it
-  // didn't create (see that function's comment). Look that account up here
-  // too, or this whole reset silently no-ops: it used to fall through to
-  // provisionParticipantAccount() below, which finds that same existing
-  // account, reports "linked_existing", and returns success - without ever
-  // touching that account's actual password. This tool is only reachable
-  // after an organizer has already verified the participant's identity out
-  // of band (see callers), which is exactly the ownership proof
-  // provisionParticipantAccount() can't assume on its own - so resetting and
-  // linking it here, unlike there, is safe.
-  const profileId = params.profileId ?? (await findExistingProfileId(params.email.toLowerCase().trim()));
-
-  if (profileId) {
-    // Resolve and check the actual target account - never trust a caller
-    // simply not to pass a staff account in; verify it here.
-    const [{ data: platformRole }, { data: eventAdminRows }] = await Promise.all([
-      admin.from("platform_roles").select("user_id").eq("user_id", profileId).maybeSingle(),
-      admin.from("event_admins").select("id").eq("user_id", profileId).limit(1),
-    ]);
-    if (platformRole || (eventAdminRows && eventAdminRows.length > 0)) {
-      return {
-        ok: false,
-        error: "This account also has admin access — it cannot be reset with the predictable participant formula.",
-      };
-    }
-
-    let tempPassword: string;
-    try {
-      tempPassword = generateTemporaryPassword(params);
-    } catch (err) {
-      if (err instanceof InvalidDateOfBirthError) {
-        return { ok: false, error: "Invalid date of birth on file - could not reset access." };
-      }
-      throw err;
-    }
-
-    const { error: pwError } = await admin.auth.admin.updateUserById(profileId, { password: tempPassword });
-    if (pwError) return { ok: false, error: pwError.message || "Could not reset access." };
-
-    // Never leave an account with a reset password but without the mandatory
-    // change-password restriction - if this write fails, surface it as a
-    // failure rather than silently leaving the account in that state.
-    const { error: flagError } = await admin.from("profiles").update({ must_change_password: true }).eq("id", profileId);
-    if (flagError) {
-      return {
-        ok: false,
-        error: "Password was reset but the mandatory change flag could not be set. Reset access again to retry.",
-      };
-    }
-
-    if (params.teamMemberId) {
-      await admin.from("team_members").update({ profile_id: profileId }).eq("id", params.teamMemberId).is("profile_id", null);
-    }
-
-    return { ok: true };
-  }
-
-  // Genuinely no account anywhere for this email - create one fresh.
-  const outcome = await provisionParticipantAccount(params);
-  if (outcome.status === "failed") return { ok: false, error: outcome.error };
-  if (params.teamMemberId) {
-    await admin.from("team_members").update({ profile_id: outcome.profileId }).eq("id", params.teamMemberId).is("profile_id", null);
+  const { error } = await admin
+    .from("team_members")
+    .update({ profile_id: user.id })
+    .eq("email", user.email.toLowerCase())
+    .is("profile_id", null);
+  if (error) {
+    console.error("[provisioning] link sweep failed:", error.message);
+    return { ok: false };
   }
   return { ok: true };
 }
 
-// Called after a team rename (src/app/portal/team/actions.ts, renameTeam):
-// the temporary-password formula bakes in the team name at account-creation
-// time, so a rename would otherwise silently strand anyone who hasn't
-// finished onboarding yet - the sign-in page and admin panel both compute
-// the formula from the CURRENT team name, which no longer matches the
-// password issued under the old one. Only accounts still on their temp
-// password are resynced (must_change_password still true); anyone who
-// already chose their own private password keeps it untouched.
-export async function resyncTempPasswordsForTeam(teamId: string, newTeamName: string): Promise<void> {
+// Marks this account's team memberships verified once the participant has
+// set their own private password. Service role: the column is protected from
+// participant writes by protect_team_member_fields.
+export async function markParticipantVerified(userId: string): Promise<{ ok: boolean }> {
   const admin = createAdminClient();
-  const { data: members } = await admin
+  const { error } = await admin
     .from("team_members")
-    .select("profile_id, email, full_name, date_of_birth, profiles(must_change_password)")
-    .eq("team_id", teamId)
-    .not("profile_id", "is", null);
+    .update({ verification_status: "verified", verified_at: new Date().toISOString() })
+    .eq("profile_id", userId)
+    .eq("verification_status", "pending");
+  if (error) console.error("[provisioning] could not mark verified:", error.message);
+  return { ok: !error };
+}
 
-  const toResync = (
-    (members as unknown as {
-      profile_id: string;
-      email: string;
-      full_name: string;
-      date_of_birth: string;
-      profiles: { must_change_password: boolean } | null;
-    }[]) ?? []
-  ).filter((m) => m.profiles?.must_change_password);
+// Revokes every session/refresh token of a user (RISK-003). Supabase does not
+// do this when a password is changed through the Admin API.
+export async function revokeAllSessions(userId: string): Promise<{ ok: boolean }> {
+  const admin = createAdminClient();
+  const { error } = await admin.rpc("revoke_user_sessions", { p_user_id: userId });
+  if (error) console.error("[provisioning] session revocation failed:", error.message);
+  return { ok: !error };
+}
 
-  await Promise.all(
-    toResync.map((m) =>
-      resetParticipantAccount({
-        profileId: m.profile_id,
-        email: m.email,
-        teamName: newTeamName,
-        fullName: m.full_name,
-        dateOfBirth: m.date_of_birth,
-      }),
-    ),
-  );
+export type ResetOutcome = { ok: true; mode: "recovery_sent" | "invited" | "existing_unlinked_recovery_sent" } | { ok: false; error: string };
+
+// Organizer-assisted recovery, only after the organizer verified the
+// participant's identity out of band. Emails a recovery link to the address
+// on file (only the mailbox owner can use it), THEN replaces the current
+// password with a random one and revokes all sessions, so whoever held the
+// old credentials - or an old session - is locked out. Staff accounts are
+// refused here, not just by callers.
+export async function sendParticipantAccessLink(params: {
+  profileId: string | null;
+  email: string;
+  fullName: string;
+  teamMemberId: string;
+}): Promise<ResetOutcome> {
+  const email = params.email.toLowerCase().trim();
+  const admin = createAdminClient();
+
+  let accountId: string | null;
+  try {
+    accountId = params.profileId ?? (await findAuthUserIdByEmail(email));
+  } catch {
+    return { ok: false, error: "Could not look up this participant's account." };
+  }
+
+  if (!accountId) {
+    const outcome = await inviteParticipant({ email, fullName: params.fullName, teamMemberId: params.teamMemberId });
+    if (outcome.status === "invited") return { ok: true, mode: "invited" };
+    if (outcome.status === "failed") return { ok: false, error: outcome.error };
+    accountId = await findAuthUserIdByEmail(email);
+    if (!accountId) return { ok: false, error: "Could not look up this participant's account." };
+  }
+
+  try {
+    if (await isStaffAccount(accountId)) {
+      return { ok: false, error: "This account also has admin access — reset it through Supabase Auth directly, not this tool." };
+    }
+  } catch {
+    return { ok: false, error: "Could not verify this account's roles. Nothing was changed." };
+  }
+
+  const { error: recoverError } = await admin.auth.resetPasswordForEmail(email, { redirectTo: participantSetupRedirect() });
+  if (recoverError) {
+    console.error("[provisioning] recovery email failed:", recoverError.code, recoverError.message);
+    return { ok: false, error: "The recovery email could not be sent. Nothing was changed." };
+  }
+
+  const { error: pwError } = await admin.auth.admin.updateUserById(accountId, {
+    password: randomBytes(32).toString("base64url"),
+  });
+  if (pwError) {
+    return { ok: false, error: "The recovery email was sent, but the old password could not be invalidated. Try again." };
+  }
+  const revoked = await revokeAllSessions(accountId);
+  if (!revoked.ok) {
+    return { ok: false, error: "The recovery email was sent and the password replaced, but existing sessions could not be revoked. Try again." };
+  }
+
+  return { ok: true, mode: params.profileId ? "recovery_sent" : "existing_unlinked_recovery_sent" };
 }

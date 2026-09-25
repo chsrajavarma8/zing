@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { getAdminContext } from "@/lib/auth/admin";
+import { requireSuperAdmin } from "@/lib/auth/admin-guards";
 import { logAudit } from "@/lib/audit";
 import { sendAccountSetupLink, generateInviteToken, createAdminAccountWithPassword } from "@/lib/auth/provisioning";
 import { revalidatePath } from "next/cache";
@@ -17,9 +18,11 @@ export async function inviteAdmin(eventId: string, email: string, role: "event_a
   // initial password) - re-checked server-side, not just gated by the page
   // that renders this form.
   const ctx = await getAdminContext();
-  if (!ctx || ctx.role !== "super_admin") return { ok: false, error: "Only super admins can do this." };
+  if (!ctx || ctx.role !== "super_admin" || ctx.event.id !== eventId) return { ok: false, error: "Only super admins can do this." };
+  if (role !== "event_admin" && role !== "reviewer") return { ok: false, error: "Invalid role." };
 
-  const trimmedEmail = email.toLowerCase().trim();
+  const trimmedEmail = typeof email === "string" ? email.toLowerCase().trim() : "";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) return { ok: false, error: "Enter a valid email address." };
 
   // Path A: super admin types an initial password now - the account is
   // created (or updated) and the role granted immediately, no email
@@ -64,16 +67,14 @@ export async function inviteAdmin(eventId: string, email: string, role: "event_a
 }
 
 export async function revokeEventAdmin(eventAdminId: string, eventId: string) {
+  const guard = await requireSuperAdmin(eventId);
+  if (!guard.ok) return guard;
+
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "Not signed in." };
+  const { data, error } = await supabase.from("event_admins").delete().eq("id", eventAdminId).eq("event_id", eventId).select("id, user_id");
+  if (error || !data || data.length !== 1) return { ok: false, error: "Could not revoke access." };
 
-  const { error } = await supabase.from("event_admins").delete().eq("id", eventAdminId);
-  if (error) return { ok: false, error: "Could not revoke access." };
-
-  await logAudit({ actorProfileId: user.id, eventId, action: "revoke_admin", entityType: "event_admins", entityId: eventAdminId });
+  await logAudit({ actorProfileId: guard.ctx.user.userId, eventId, action: "revoke_admin", entityType: "event_admins", entityId: eventAdminId });
   revalidatePath("/admin/roles");
   return { ok: true };
 }

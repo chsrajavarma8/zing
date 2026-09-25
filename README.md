@@ -11,8 +11,8 @@ run a future event by editing configuration, not code.
 ## Stack
 
 - **Next.js 16** (App Router, Turbopack, Server Actions)
-- **Supabase**: Postgres + Row Level Security, Auth (email/password, no public signup, participant
-  accounts use a server-generated temporary password with no email step), Storage
+- **Supabase**: Postgres + Row Level Security, Auth (email/password, no public signup, participants
+  set their own password from an invitation email), Storage
 - **shadcn/ui** (Radix primitives) + Tailwind CSS v4
 - **Zod** + **react-hook-form** for validation
 - **Resend** (optional) for transactional email
@@ -23,19 +23,19 @@ run a future event by editing configuration, not code.
 src/app/(public)/        Public marketing site (home, about, rounds, schedule, rules, prizes, ...)
 src/app/login             Email/password sign-in — no public signup
 src/app/forgot-password   Static "contact support" help page (no self-serve email recovery)
-src/app/auth/set-password Completes an admin invite/reset link (admins/reviewers only)
-src/app/change-password   Mandatory private-password change after first temp-password sign-in
+src/app/auth/set-password Completes an invitation or recovery link (participants, admins, reviewers)
+src/app/change-password   Mandatory private-password change for legacy temporary-password accounts
 src/app/register          Public team registration
 src/app/portal            Participant portal (protected, role: team lead/member)
 src/app/admin             Admin panel (protected, role: super_admin/event_admin/reviewer)
-src/app/api               Route handlers: registration, document downloads, exam engine, admin CSV export
+src/app/api               Route handlers: registration, signed uploads, document downloads, admin CSV export
 src/lib/supabase          Browser / server / admin (service-role) Supabase clients
 src/lib/auth              Session + admin role resolution helpers
-src/lib/exam              Screening-exam grading, shuffling, server-authoritative timing
 supabase/migrations       Numbered SQL migrations: schema, RLS policies, functions, storage buckets
 supabase/seed.sql         DEV-ONLY demo data (never applied to production)
-scripts/                  One-off bootstrap/migration scripts (inviting the first super admin,
-                          creating accounts for participants registered before this auth model)
+scripts/                  One-off operator scripts (inviting the first super admin, moving legacy
+                          temporary-password participants onto emailed links)
+tests/                    unit (npm run test:unit), local-Supabase integration (test:integration), e2e (test:e2e)
 ```
 
 ## Getting started (local development)
@@ -114,7 +114,7 @@ Set the same environment variables from `.env.example` in the Vercel project set
 - `NEXT_PUBLIC_SITE_URL` — your production URL (used in ID-card QR codes)
 - `RESEND_API_KEY` / `EMAIL_FROM` — optional, enables registration-confirmation and notification email
 - `WHATSAPP_PROVIDER` / `WHATSAPP_API_KEY` / `WHATSAPP_API_URL` — optional, enables WhatsApp notification delivery
-- `ID_CARD_SIGNING_SECRET` — random 32+ character string
+- `CRON_SECRET` — random string; required for the notification dispatch cron endpoint
 
 Without an email/WhatsApp provider configured, the app degrades honestly: notifications and
 registration confirmations are marked "not configured" in the database rather than pretending to
@@ -151,41 +151,29 @@ widget, etc.), a consent banner becomes required at that point, not before.
 ## Security model
 
 - **No public signup.** The app never calls `supabase.auth.signUp()` anywhere.
-- **Participants: no email step at all.** `provisionParticipantAccount()`
-  (`src/lib/auth/participant-provisioning.ts`) creates each participant's Supabase Auth account
-  synchronously at registration time with a 9-character temporary password deterministically
-  derived from details only they know (first 2 letters of their team name + first 3 letters of
-  their own name + their 4-digit birth year, lowercased, padded with `x` if short — see
-  `src/lib/auth/temp-password.ts` and the "First-time login instructions" on the sign-in page).
-  Nothing is emailed, logged, or displayed — every participant computes their own.
-  `profiles.must_change_password` is set on account creation and gates portal access (enforced in
-  `src/app/portal/layout.tsx`, a server component) until the participant sets a private password via
-  `/change-password`; a database trigger (`protect_must_change_password` in
-  `0016_temp_password_auth.sql`) makes that column writable only by the service-role client, so it
-  cannot be cleared from the browser without an actual password change going through
-  `completeMandatoryPasswordChange()`. Editing a participant's name or DOB later never touches their
-  password — it's a one-time input at account creation, not recomputed. Renaming a team (portal ->
-  team lead only) is the one exception: since the formula bakes in the team name, `renameTeam()`
-  calls `resyncTempPasswordsForTeam()` immediately after, which reissues the temp password (under the
-  new name) for any member who hasn't finished onboarding yet (`must_change_password` still true) —
-  anyone who already chose their own private password is left untouched. Existing accounts are never
-  reset automatically otherwise; `scripts/migrate-temp-passwords.mjs` provisions accounts only for
-  already-registered participants who don't have one yet, and imports the real formula from
-  `src/lib/auth/temp-password.ts` rather than keeping its own copy (a prior hand-maintained copy
-  drifted out of sync and issued passwords participants could never compute themselves — see
-  `scripts/auth-regression-tests.mjs`, which guards against that recurring).
-- **Admins/reviewers: unchanged, email-link based.** `sendAccountSetupLink()`
-  (`src/lib/auth/provisioning.ts`) still sends a real Supabase invite/reset link, completed at
-  `/auth/set-password`. The predictable participant formula is never used for admin/reviewer
-  accounts, and neither registration nor any password-change path ever writes to
-  `platform_roles`/`event_admins`/`admin_invites` — admin privileges are granted exclusively by
-  `consume_admin_invites()` matching a real invite row at account-creation time, independent of any
-  password.
-- **No self-serve recovery.** `/forgot-password` is a static "contact support" page — there is no
-  password-reset email or link for participants. An organizer can trigger
-  `resetParticipantAccess()` (Admin → Registrations → a team → "Reset access") only after verifying
-  the participant's identity out of band; it refuses to run on any account that also holds
-  admin/reviewer access.
+- **Participants: invitation email, then a private password.** Registration calls
+  `inviteParticipant()` (`src/lib/auth/participant-provisioning.ts`), which sends each member a
+  Supabase Auth invitation; they set their own password at `/auth/set-password`. No address is
+  confirmed on the registrant's behalf and no password is derived from registration details, so
+  typing someone else's email into the form grants no access. An email that already has an account
+  is linked to the registration only when its owner signs in with a **confirmed** Auth email.
+  **Requires working SMTP on the Supabase project** (see `docs/SECURITY-FIXES-2026-09.md`).
+- **Legacy temporary passwords.** Accounts created before invitations were introduced used a
+  formula password (`src/lib/auth/temp-password.ts`) and are still forced through
+  `/change-password` (`profiles.must_change_password`, writable only by the service role). Changing
+  it marks the member verified and revokes every other session. Use
+  `scripts/reprovision-legacy-participants.mjs` (dry run by default) to move those accounts onto
+  emailed recovery links.
+- **Admins/reviewers** are invited with a token-bound link (`sendAccountSetupLink()`,
+  `acceptAdminInvite()` in `src/lib/auth/provisioning.ts`) completed at `/auth/set-password`, which
+  always uses the link's own credentials, never a session already open in the browser.
+- **Identity lookups use the verified Auth email** (`auth_user_id_by_email`, service role only);
+  `profiles.email` can no longer be changed by users.
+- **Organizer-assisted recovery.** `/forgot-password` is a "contact support" page. After verifying
+  identity out of band, an organizer uses "Reset access", which emails a recovery link, replaces the
+  current password with a random one, and revokes all sessions. It refuses staff accounts.
+- **Shared rate limiting** for sign-in and registration is stored in Postgres
+  (`rate_limit_hit`, keys SHA-256 hashed), so limits hold across serverless instances.
 - **Row Level Security is the source of truth** for every table (see
   `supabase/migrations/0011_rls.sql`); server actions and API routes add a second layer but never
   substitute for it.
@@ -206,14 +194,17 @@ widget, etc.), a consent banner becomes required at that point, not before.
   enforcing deadlines strictly.
 - WhatsApp delivery requires wiring up a specific provider (Twilio, Gupshup, etc.) — the delivery
   pipeline and "not configured" UI states are in place, but no provider is pre-wired.
-- The in-memory rate limiter (`src/lib/rate-limit.ts`) is per-instance; for a multi-instance
-  production deployment, swap it for Upstash Redis (`vercel integration add upstash`).
-- **Scheduled notifications** (Admin → Notifications → "Schedule for later") are dispatched by
-  `/api/cron/dispatch-notifications`, triggered every 5 minutes by the Vercel Cron job in
-  `vercel.json`. This only runs once the app is deployed to Vercel — set `CRON_SECRET` as an
-  environment variable (Vercel sets its side of this automatically) so the endpoint rejects
-  unauthenticated calls. Locally, or before deployment, scheduled notifications are saved but not
-  dispatched.
+- **Scheduled notifications** (Admin → Notifications → "Schedule for later") become visible to
+  recipients exactly at their scheduled time. The database releases them (`notification_released`),
+  so in-app delivery does not depend on any scheduler, and nothing is readable before that time,
+  even through the API. `/api/cron/dispatch-notifications` (Vercel Cron, `vercel.json`) only records
+  `sent_at` and sends email-channel copies; set `CRON_SECRET` so it rejects unauthenticated calls.
+  The cron runs daily because Vercel Hobby plans allow only daily jobs; on Pro you can change it to
+  `*/5 * * * *` if email-channel delivery is re-enabled.
+- **Uploads** (team submissions and organizer documents up to 25 MB, logos up to 5 MB) go directly
+  from the browser to Supabase Storage through single-use signed URLs. The server then verifies
+  each file's real size and file signature before recording it, which avoids Vercel's 4.5 MB
+  function request-body limit.
 - **Mentor/judge counts** (homepage "15+ mentors" / "8+ judges") are a hardcoded organizer-provided
   fact in `src/lib/event-facts.ts`, not a database-backed roster — there is no admin UI to list
   individual mentors/judges yet. Update that file if the confirmed counts change; wire up a real

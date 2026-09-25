@@ -13,6 +13,8 @@
 // content through this function. If you need a new event, add it to
 // AnalyticsEvent below with an explicit, reviewed property shape - don't
 // widen the existing ones to `unknown`.
+import { getCookieConsent } from "@/lib/cookie-consent";
+
 export type FormFailureCategory = "validation" | "network" | "server_error" | "permission" | "rate_limited" | "deadline_passed";
 
 export type AnalyticsEvent =
@@ -22,8 +24,10 @@ export type AnalyticsEvent =
   | { name: "submission_saved"; props: { roundKey: string } }
   | { name: "form_failed"; props: { form: string; reason: FormFailureCategory } };
 
+// Analytics cookies are optional: nothing is sent unless the visitor chose
+// "Accept all" in the cookie banner (src/components/site/cookie-consent-banner.tsx).
 function isEnabled(): boolean {
-  return process.env.NEXT_PUBLIC_ANALYTICS_ENABLED === "true";
+  return process.env.NEXT_PUBLIC_ANALYTICS_ENABLED === "true" && getCookieConsent() === "all";
 }
 
 // Extension point for a real provider (Plausible, PostHog, etc). Left

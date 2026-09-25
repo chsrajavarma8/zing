@@ -240,6 +240,25 @@ export interface LoginActivityRow {
   created_at: string;
 }
 
+// Row of the team_roster view (0043_security_integrity_fixes.sql): what a
+// participant may see about their teammates. email is null unless the viewer
+// is that member or the team lead.
+export interface RosterMember {
+  id: string;
+  team_id: string;
+  event_id: string;
+  role: "lead" | "member";
+  full_name: string;
+  college: string;
+  education_level: "school" | "college";
+  reference_id: string;
+  verification_status: "pending" | "verified";
+  has_account: boolean;
+  is_self: boolean;
+  email: string | null;
+  created_at: string;
+}
+
 export interface FeedbackRow {
   id: string;
   event_id: string;
@@ -273,7 +292,6 @@ export type Database = {
     Tables: Record<string, LooseTable>;
     Views: Record<string, LooseView>;
     Functions: {
-      is_login_eligible: { Args: { p_email: string }; Returns: boolean };
       verify_id_card: {
         Args: { token: string };
         Returns: { full_name: string; team_name: string; event_name: string; role: string; reference_id: string; valid: boolean }[];
@@ -291,6 +309,18 @@ export type Database = {
         Args: { p_team_id: string; p_new_lead_member_id: string };
         Returns: void;
       };
+      lead_add_team_member: { Args: { p_team_id: string; p_member: Json }; Returns: string };
+      lead_remove_team_member: { Args: { p_member_id: string }; Returns: string };
+      publish_policy_version: {
+        Args: { p_event_id: string; p_type: string; p_version: string; p_content: string };
+        Returns: string;
+      };
+      rate_limit_hit: {
+        Args: { p_bucket: string; p_limit: number; p_window_seconds: number };
+        Returns: { allowed: boolean; retry_after_seconds: number }[];
+      };
+      revoke_user_sessions: { Args: { p_user_id: string }; Returns: number };
+      auth_user_id_by_email: { Args: { p_email: string }; Returns: string | null };
     };
   };
 };

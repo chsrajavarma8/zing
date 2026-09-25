@@ -11,7 +11,7 @@ export default async function NotificationsPage() {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("notification_recipients")
-    .select("id, read_at, channel, notifications(id, title, message, priority, action_link, created_at)")
+    .select("id, read_at, channel, notifications(id, title, message, priority, action_link, created_at, sent_at, scheduled_at)")
     .eq("profile_id", portal.userId)
     .eq("channel", "in_app")
     .order("created_at", { ascending: false });
@@ -20,7 +20,7 @@ export default async function NotificationsPage() {
     id: string;
     read_at: string | null;
     channel: string;
-    notifications: { id: string; title: string; message: string; priority: string; action_link: string | null; created_at: string } | null;
+    notifications: { id: string; title: string; message: string; priority: string; action_link: string | null; created_at: string; sent_at: string | null; scheduled_at: string | null } | null;
   };
 
   // Never let a query failure render as "no notifications yet" - that's

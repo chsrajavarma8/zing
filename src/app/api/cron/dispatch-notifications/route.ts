@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email/send";
+import { plainTextToEmailHtml } from "@/lib/html";
+import { cleanupOrphanedUploads } from "@/lib/storage-cleanup";
 
-// Triggered by Vercel Cron (see vercel.json) every few minutes. Finds
-// notifications whose scheduled_at has passed and haven't been sent yet,
-// then runs the same per-recipient dispatch that an immediate send does.
+// Triggered by Vercel Cron (see vercel.json). In-app delivery does NOT depend
+// on this job: recipients can read a scheduled notification from its
+// scheduled_at onwards (notification_released, 0043). This job records
+// sent_at and dispatches any email-channel recipients for notifications that
+// have become due.
 // Protected by CRON_SECRET so this can't be triggered by anyone who finds
 // the URL - Vercel Cron sends it automatically as a Bearer token.
 export async function GET(req: NextRequest) {
@@ -56,7 +60,12 @@ export async function GET(req: NextRequest) {
 
       for (const r of (recipients as unknown as { id: string; profiles: { email: string } | null }[] | null) ?? []) {
         if (!r.profiles?.email) continue;
-        const result = await sendEmail({ to: r.profiles.email, subject: notification.title, html: `<p>${notification.message.replace(/\n/g, "<br/>")}</p>` });
+        // Plain-text content is escaped before it becomes HTML (RISK-007).
+        const result = await sendEmail({
+          to: r.profiles.email,
+          subject: notification.title.replace(/[\r\n]+/g, " "),
+          html: plainTextToEmailHtml(notification.message),
+        });
         await admin
           .from("notification_recipients")
           .update({
@@ -72,5 +81,9 @@ export async function GET(req: NextRequest) {
     dispatched++;
   }
 
-  return NextResponse.json({ ok: true, dispatched });
+  // Housekeeping on the same secured schedule: delete uploads that no row
+  // references (abandoned, rejected, or failed finalization - RISK-001).
+  const cleanup = await cleanupOrphanedUploads();
+
+  return NextResponse.json({ ok: true, dispatched, orphanedUploadsRemoved: cleanup.removed, orphanedUploadsFailed: cleanup.failed });
 }

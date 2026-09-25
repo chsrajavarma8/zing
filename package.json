@@ -8,7 +8,12 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test:auth": "node scripts/auth-regression-tests.mjs"
+    "test:auth": "node scripts/auth-regression-tests.mjs",
+    "test:unit": "node --import ./tests/unit/alias-loader.mjs --test \"tests/unit/**/*.test.mjs\"",
+    "test:integration": "node --test --test-concurrency=1 \"tests/integration/**/*.test.mjs\"",
+    "test:e2e": "node --test --test-concurrency=1 tests/e2e/app-security.test.mjs tests/e2e/notifications-uploads.test.mjs",
+    "test:browser": "node --test --test-concurrency=1 tests/e2e/browser-flows.test.mjs tests/e2e/responsive-a11y.test.mjs",
+    "test": "npm run test:auth && npm run test:unit"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",

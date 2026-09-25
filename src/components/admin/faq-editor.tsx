@@ -35,8 +35,8 @@ export function FaqEditor({ eventId, faqs }: { eventId: string; faqs: Faq[] }) {
     <div className="space-y-4">
       <Card>
         <CardContent className="space-y-3 pt-6">
-          <Input placeholder="Question" value={newQ} onChange={(e) => setNewQ(e.target.value)} />
-          <Textarea placeholder="Answer" rows={3} value={newA} onChange={(e) => setNewA(e.target.value)} />
+          <Input aria-label="New FAQ question" placeholder="Question" value={newQ} onChange={(e) => setNewQ(e.target.value)} />
+          <Textarea aria-label="New FAQ answer" placeholder="Answer" rows={3} value={newA} onChange={(e) => setNewA(e.target.value)} />
           <Button onClick={addFaq} disabled={busy}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
             Add FAQ
@@ -68,9 +68,9 @@ function FaqRow({ faq, eventId, onDeleted, orderIndex }: { faq: Faq; eventId: st
   return (
     <Card>
       <CardContent className="space-y-3 pt-6">
-        <Input value={question} onChange={(e) => setQuestion(e.target.value)} />
-        <Textarea rows={2} value={answer} onChange={(e) => setAnswer(e.target.value)} />
-        <div className="flex items-center justify-between">
+        <Input aria-label={`Question `} value={question} onChange={(e) => setQuestion(e.target.value)} />
+        <Textarea aria-label={`Answer `} rows={2} value={answer} onChange={(e) => setAnswer(e.target.value)} />
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <label className="flex items-center gap-2 text-sm">
             <Switch checked={published} onCheckedChange={setPublished} /> Published
           </label>
@@ -82,9 +82,11 @@ function FaqRow({ faq, eventId, onDeleted, orderIndex }: { faq: Faq; eventId: st
             <Button
               size="sm"
               variant="ghost"
+              aria-label={`Delete FAQ: ${question || "untitled"}`}
               onClick={async () => {
-                const result = await deleteFaq(faq.id);
+                const result = await deleteFaq(eventId, faq.id);
                 if (result.ok) onDeleted();
+                else toast.error(result.error);
               }}
             >
               <Trash2 className="h-4 w-4" />

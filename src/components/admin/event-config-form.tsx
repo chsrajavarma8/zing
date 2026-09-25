@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Children, cloneElement, isValidElement, useId, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { updateEvent } from "@/app/admin/events/actions";
 import { toISTDatetimeLocalValue, fromISTDatetimeLocalValue } from "@/lib/date";
 import { isValidWhatsappGroupUrl } from "@/lib/whatsapp";
+import { directUpload } from "@/lib/direct-upload";
 import type { Event, Json } from "@/types/database";
 import { useRef } from "react";
 import { useRouter } from "next/navigation";
@@ -88,7 +89,7 @@ export function EventConfigForm({ event, readOnly }: { event: Event; readOnly: b
       )}
       <CardContent className="pt-6">
         <Tabs defaultValue="basics">
-          <TabsList className="mb-4 flex-wrap">
+          <TabsList className="mb-4 max-w-full justify-start overflow-x-auto">
             <TabsTrigger value="basics">Basics</TabsTrigger>
             <TabsTrigger value="dates">Dates & Team Size</TabsTrigger>
             <TabsTrigger value="contact">Contact</TabsTrigger>
@@ -113,7 +114,7 @@ export function EventConfigForm({ event, readOnly }: { event: Event; readOnly: b
             <Field label="Description" full>
               <Textarea disabled={readOnly} rows={4} value={values.description} onChange={(e) => set("description", e.target.value)} />
             </Field>
-            <Field label="Logo" full>
+            <Field label="Logo" full controlId="branding-logo-file">
               <BrandingLogoUpload branding={event.branding} readOnly={readOnly} />
             </Field>
           </TabsContent>
@@ -157,13 +158,13 @@ export function EventConfigForm({ event, readOnly }: { event: Event; readOnly: b
               <Input type="number" min={1} disabled={readOnly} value={values.team_size_max} onChange={(e) => set("team_size_max", Number(e.target.value))} />
             </Field>
             <div className="flex items-center gap-2 sm:col-span-2">
-              <Switch disabled={readOnly} checked={values.allow_gender_field} onCheckedChange={(v) => set("allow_gender_field", v)} />
-              <Label className="font-normal">Show gender field at registration</Label>
+              <Switch id="event-allow-gender" disabled={readOnly} checked={values.allow_gender_field} onCheckedChange={(v) => set("allow_gender_field", v)} />
+              <Label htmlFor="event-allow-gender" className="font-normal">Show gender field at registration</Label>
             </div>
             {values.allow_gender_field && (
               <div className="flex items-center gap-2 sm:col-span-2">
-                <Switch disabled={readOnly} checked={values.gender_field_required} onCheckedChange={(v) => set("gender_field_required", v)} />
-                <Label className="font-normal">Require gender field (optional by default)</Label>
+                <Switch id="event-require-gender" disabled={readOnly} checked={values.gender_field_required} onCheckedChange={(v) => set("gender_field_required", v)} />
+                <Label htmlFor="event-require-gender" className="font-normal">Require gender field (optional by default)</Label>
               </div>
             )}
           </TabsContent>
@@ -181,13 +182,13 @@ export function EventConfigForm({ event, readOnly }: { event: Event; readOnly: b
           </TabsContent>
 
           <TabsContent value="problem" className="space-y-4">
-            <Field label="Problem statement mode">
+            <Field label="Problem statement mode" controlId="event-problem-mode">
               <Select
                 disabled={readOnly}
                 value={values.problem_statement_mode}
                 onValueChange={(v) => set("problem_statement_mode", v as typeof values.problem_statement_mode)}
               >
-                <SelectTrigger className="w-full sm:w-80">
+                <SelectTrigger id="event-problem-mode" className="w-full sm:w-80">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -214,11 +215,12 @@ export function EventConfigForm({ event, readOnly }: { event: Event; readOnly: b
             </Field>
             <div className="flex items-center gap-2">
               <Switch
+                id="event-whatsapp-enabled"
                 disabled={readOnly || !isValidWhatsappGroupUrl(values.whatsapp_group_url)}
                 checked={values.whatsapp_group_enabled}
                 onCheckedChange={(v) => set("whatsapp_group_enabled", v)}
               />
-              <Label className="font-normal">Show &ldquo;Join WhatsApp Group&rdquo; button</Label>
+              <Label htmlFor="event-whatsapp-enabled" className="font-normal">Show &ldquo;Join WhatsApp Group&rdquo; button</Label>
             </div>
             <p className="text-sm text-muted-foreground">
               Shown on the registration confirmation page and participant dashboard once a valid link is set and
@@ -227,9 +229,9 @@ export function EventConfigForm({ event, readOnly }: { event: Event; readOnly: b
           </TabsContent>
 
           <TabsContent value="publish" className="space-y-4">
-            <Field label="Status">
+            <Field label="Status" controlId="event-status">
               <Select disabled={readOnly} value={values.status} onValueChange={(v) => set("status", v as typeof values.status)}>
-                <SelectTrigger className="w-full sm:w-60">
+                <SelectTrigger id="event-status" className="w-full sm:w-60">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -266,14 +268,17 @@ function BrandingLogoUpload({ branding, readOnly }: { branding: Json; readOnly: 
   async function upload() {
     const file = fileRef.current?.files?.[0];
     if (!file) return;
-    const form = new FormData();
-    form.set("file", file);
     setBusy(true);
-    const res = await fetch("/api/admin/branding/upload", { method: "POST", body: form });
-    const data = await res.json();
+    const result = await directUpload({
+      bucket: "branding",
+      file,
+      urlEndpoint: "/api/admin/uploads/url",
+      completeEndpoint: "/api/admin/uploads/complete",
+      extra: { kind: "branding" },
+    });
     setBusy(false);
-    if (!res.ok) {
-      toast.error(data.error ?? "Upload failed.");
+    if (!result.ok) {
+      toast.error(result.error);
       return;
     }
     toast.success("Logo updated");
@@ -288,7 +293,10 @@ function BrandingLogoUpload({ branding, readOnly }: { branding: Json; readOnly: 
       )}
       {!readOnly && (
         <div className="flex items-center gap-2">
-          <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" className="text-sm" />
+          <label htmlFor="branding-logo-file" className="sr-only">
+            Event logo image (PNG, JPEG, or WebP, up to 5 MB)
+          </label>
+          <input id="branding-logo-file" ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" className="text-sm" />
           <Button type="button" size="sm" variant="outline" onClick={upload} disabled={busy}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
             Upload
@@ -299,11 +307,19 @@ function BrandingLogoUpload({ branding, readOnly }: { branding: Json; readOnly: 
   );
 }
 
-function Field({ label, full, children }: { label: string; full?: boolean; children: React.ReactNode }) {
+// Associates the label with the field's control (BUG-017): the first child,
+// when it's an Input or Textarea, receives the generated id. Select fields
+// pass `controlId` through to their SelectTrigger instead.
+function Field({ label, full, children, controlId }: { label: string; full?: boolean; children: React.ReactNode; controlId?: string }) {
+  const generated = useId();
+  const id = controlId ?? generated;
+  const content = Children.map(children, (child, i) =>
+    i === 0 && isValidElement<{ id?: string }>(child) && (child.type === Input || child.type === Textarea) ? cloneElement(child, { id }) : child,
+  );
   return (
     <div className={`space-y-2 ${full ? "sm:col-span-2" : ""}`}>
-      <Label>{label}</Label>
-      {children}
+      <Label htmlFor={id}>{label}</Label>
+      {content}
     </div>
   );
 }

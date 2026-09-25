@@ -1,77 +1,100 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { getAdminContext, canManage } from "@/lib/auth/admin";
+import { requireManager, requireStaff } from "@/lib/auth/admin-guards";
 import { logAudit } from "@/lib/audit";
 import { revalidatePath } from "next/cache";
 
-export async function upsertCriterion(roundId: string, input: { id?: string; name: string; maxMarks: number; weight: number; orderIndex: number }) {
+// Every action authorizes role + event scope up front and confirms the row
+// it changed (BUG-011). Reviewers may enter their own scores; everything
+// else here is event_admin/super_admin only.
+
+async function roundInEvent(roundId: string, eventId: string): Promise<boolean> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "Not signed in." };
+  const { data } = await supabase.from("rounds").select("id").eq("id", roundId).eq("event_id", eventId).maybeSingle();
+  return Boolean(data);
+}
 
-  const payload = { round_id: roundId, name: input.name, max_marks: input.maxMarks, weight: input.weight, order_index: input.orderIndex };
-  const { error } = input.id
-    ? await supabase.from("judging_criteria").update(payload).eq("id", input.id)
-    : await supabase.from("judging_criteria").insert(payload);
+async function teamInEvent(teamId: string, eventId: string): Promise<boolean> {
+  const supabase = await createClient();
+  const { data } = await supabase.from("teams").select("id").eq("id", teamId).eq("event_id", eventId).maybeSingle();
+  return Boolean(data);
+}
 
-  if (error) return { ok: false, error: "Could not save criterion." };
-  await logAudit({ actorProfileId: user.id, action: "upsert_judging_criterion", entityType: "judging_criteria", entityId: input.id ?? roundId, after: payload });
+export async function upsertCriterion(roundId: string, input: { id?: string; name: string; maxMarks: number; weight: number; orderIndex: number }) {
+  const guard = await requireManager();
+  if (!guard.ok) return guard;
+  const eventId = guard.ctx.event.id;
+  if (!(await roundInEvent(roundId, eventId))) return { ok: false, error: "Round not found." };
+
+  const name = typeof input.name === "string" ? input.name.trim() : "";
+  if (!name || name.length > 200) return { ok: false, error: "Enter a criterion name." };
+  if (!Number.isFinite(input.maxMarks) || input.maxMarks <= 0 || !Number.isFinite(input.weight) || input.weight < 0) {
+    return { ok: false, error: "Max marks must be positive and weight must not be negative." };
+  }
+
+  const supabase = await createClient();
+  const payload = { round_id: roundId, name, max_marks: input.maxMarks, weight: input.weight, order_index: Math.trunc(input.orderIndex) || 0 };
+  const { data, error } = input.id
+    ? await supabase.from("judging_criteria").update(payload).eq("id", input.id).eq("round_id", roundId).select("id")
+    : await supabase.from("judging_criteria").insert(payload).select("id");
+
+  if (error || !data || data.length !== 1) return { ok: false, error: "Could not save criterion." };
+  await logAudit({ actorProfileId: guard.ctx.user.userId, eventId, action: "upsert_judging_criterion", entityType: "judging_criteria", entityId: data[0].id as string, after: payload });
   revalidatePath("/admin/judging");
   return { ok: true };
 }
 
 export async function deleteCriterion(criterionId: string) {
+  const guard = await requireManager();
+  if (!guard.ok) return guard;
+
   const supabase = await createClient();
-  const { error } = await supabase.from("judging_criteria").delete().eq("id", criterionId);
-  if (error) return { ok: false, error: "Could not delete." };
+  const { data: criterion } = await supabase.from("judging_criteria").select("id, round_id").eq("id", criterionId).maybeSingle();
+  const c = criterion as { id: string; round_id: string } | null;
+  if (!c || !(await roundInEvent(c.round_id, guard.ctx.event.id))) return { ok: false, error: "Criterion not found." };
+
+  const { data, error } = await supabase.from("judging_criteria").delete().eq("id", criterionId).select("id");
+  if (error || !data || data.length !== 1) return { ok: false, error: "Could not delete." };
+  await logAudit({ actorProfileId: guard.ctx.user.userId, eventId: guard.ctx.event.id, action: "delete_judging_criterion", entityType: "judging_criteria", entityId: criterionId });
   revalidatePath("/admin/judging");
   return { ok: true };
 }
 
 // Req. #9: each judge enters exactly one final score per team per round,
-// 1-100 inclusive - validated here (frontend also validates in
-// FinalScoreInput) and again at the database boundary by the
-// final_scores.score check constraint (0026_final_scores.sql), so a direct
-// PostgREST/Supabase-JS call can't bypass the range either.
+// 1-100 inclusive - validated here and by the final_scores check constraint.
 export async function saveFinalScore(roundId: string, teamId: string, score: number, comments?: string) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "Not signed in." };
+  const guard = await requireStaff();
+  if (!guard.ok) return guard;
+  const eventId = guard.ctx.event.id;
 
   if (!Number.isFinite(score) || score < 1 || score > 100) {
     return { ok: false, error: "Score must be between 1 and 100." };
   }
+  if (typeof comments === "string" && comments.length > 5000) return { ok: false, error: "Comments are too long." };
+  if (!(await roundInEvent(roundId, eventId)) || !(await teamInEvent(teamId, eventId))) {
+    return { ok: false, error: "Team or round not found." };
+  }
 
-  const { error } = await supabase
+  const supabase = await createClient();
+  const { data, error } = await supabase
     .from("final_scores")
     .upsert(
-      { round_id: roundId, team_id: teamId, judge_id: user.id, score, comments: comments?.trim() || null },
+      { round_id: roundId, team_id: teamId, judge_id: guard.ctx.user.userId, score, comments: comments?.trim() || null },
       { onConflict: "round_id,team_id,judge_id" },
-    );
+    )
+    .select("id");
 
-  if (error) return { ok: false, error: "Could not save score." };
+  if (error || !data || data.length !== 1) return { ok: false, error: "Could not save score." };
   revalidatePath("/admin/judging");
   revalidatePath("/scoreboard");
   return { ok: true };
 }
 
-// Admin-only (never trusts a client-supplied permission check): removes one
-// judge's final score for one team in one round. RLS (final_scores_delete,
-// 0038_final_scores_delete.sql) is the real boundary underneath - this check
-// only turns a denial into a clear message instead of a generic RLS error.
-// Deletes exactly the selected row: never the team, its members, its
-// submissions, or any other round/judge's score. final_score_audit rows for
-// this score cascade automatically (its own FK); nothing else does.
+// Admin-only: removes one judge's final score for one team in one round.
 export async function deleteFinalScore(scoreId: string, eventId: string) {
-  const ctx = await getAdminContext();
-  if (!ctx || !canManage(ctx) || ctx.event.id !== eventId) {
-    return { ok: false, error: "You do not have permission to delete results." };
-  }
+  const guard = await requireManager(eventId);
+  if (!guard.ok) return { ok: false, error: "You do not have permission to delete results." };
 
   const supabase = await createClient();
   const { data: existing } = await supabase
@@ -79,13 +102,14 @@ export async function deleteFinalScore(scoreId: string, eventId: string) {
     .select("id, round_id, team_id, judge_id, score")
     .eq("id", scoreId)
     .maybeSingle();
-  if (!existing) return { ok: false, error: "This result could not be found." };
+  const row = existing as { id: string; round_id: string } | null;
+  if (!row || !(await roundInEvent(row.round_id, eventId))) return { ok: false, error: "This result could not be found." };
 
-  const { error } = await supabase.from("final_scores").delete().eq("id", scoreId);
-  if (error) return { ok: false, error: "Could not delete this result. Please try again." };
+  const { data, error } = await supabase.from("final_scores").delete().eq("id", scoreId).select("id");
+  if (error || !data || data.length !== 1) return { ok: false, error: "Could not delete this result. Please try again." };
 
   await logAudit({
-    actorProfileId: ctx.user.userId,
+    actorProfileId: guard.ctx.user.userId,
     eventId,
     action: "delete_final_score",
     entityType: "final_scores",
@@ -99,51 +123,60 @@ export async function deleteFinalScore(scoreId: string, eventId: string) {
 }
 
 export async function setPublication(roundId: string, eventId: string, scope: "participant" | "public", isPublished: boolean, reviewerFeedbackVisible: boolean) {
+  const guard = await requireManager(eventId);
+  if (!guard.ok) return guard;
+  if (scope !== "participant" && scope !== "public") return { ok: false, error: "Invalid scope." };
+  if (!(await roundInEvent(roundId, eventId))) return { ok: false, error: "Round not found." };
+
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "Not signed in." };
+  const { data, error } = await supabase
+    .from("publications")
+    .upsert(
+      {
+        round_id: roundId,
+        scope,
+        is_published: Boolean(isPublished),
+        published_by: guard.ctx.user.userId,
+        published_at: isPublished ? new Date().toISOString() : null,
+        reviewer_feedback_visible: Boolean(reviewerFeedbackVisible),
+      },
+      { onConflict: "round_id,scope" },
+    )
+    .select("id");
 
-  const { error } = await supabase.from("publications").upsert(
-    {
-      round_id: roundId,
-      scope,
-      is_published: isPublished,
-      published_by: user.id,
-      published_at: isPublished ? new Date().toISOString() : null,
-      reviewer_feedback_visible: reviewerFeedbackVisible,
-    },
-    { onConflict: "round_id,scope" },
-  );
-
-  if (error) return { ok: false, error: "Could not update publication." };
+  if (error || !data || data.length !== 1) return { ok: false, error: "Could not update publication." };
   await logAudit({
-    actorProfileId: user.id,
+    actorProfileId: guard.ctx.user.userId,
     eventId,
     action: isPublished ? "publish_results" : "unpublish_results",
     entityType: "publications",
     entityId: roundId,
-    after: { scope, isPublished },
+    after: { scope, isPublished, reviewerFeedbackVisible },
   });
   revalidatePath("/admin/judging");
   revalidatePath("/scoreboard");
+  revalidatePath("/portal/results");
   return { ok: true };
 }
 
 export async function setQualification(roundId: string, teamId: string, eventId: string, status: "qualified" | "not_qualified" | "pending", rank: number | null) {
+  const guard = await requireManager(eventId);
+  if (!guard.ok) return guard;
+  if (!["qualified", "not_qualified", "pending"].includes(status)) return { ok: false, error: "Invalid status." };
+  if (rank !== null && (!Number.isInteger(rank) || rank < 1 || rank > 100000)) return { ok: false, error: "Rank must be a positive whole number." };
+  if (!(await roundInEvent(roundId, eventId)) || !(await teamInEvent(teamId, eventId))) return { ok: false, error: "Team or round not found." };
+
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "Not signed in." };
-
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("qualification_status")
-    .upsert({ round_id: roundId, team_id: teamId, status, rank, decided_by: user.id, decided_at: new Date().toISOString() }, { onConflict: "team_id,round_id" });
+    .upsert(
+      { round_id: roundId, team_id: teamId, status, rank, decided_by: guard.ctx.user.userId, decided_at: new Date().toISOString() },
+      { onConflict: "team_id,round_id" },
+    )
+    .select("id");
 
-  if (error) return { ok: false, error: "Could not update qualification." };
-  await logAudit({ actorProfileId: user.id, eventId, action: "set_qualification", entityType: "qualification_status", entityId: teamId, after: { roundId, status, rank } });
+  if (error || !data || data.length !== 1) return { ok: false, error: "Could not update qualification." };
+  await logAudit({ actorProfileId: guard.ctx.user.userId, eventId, action: "set_qualification", entityType: "qualification_status", entityId: teamId, after: { roundId, status, rank } });
   revalidatePath("/admin/judging");
   return { ok: true };
 }

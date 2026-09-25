@@ -134,7 +134,7 @@ export function SiteHeader({
               </span>
             )}
             <span>{eventName}</span>
-            <span className="hidden text-xs font-normal text-muted-foreground sm:inline">by Skillglider</span>
+            <span className="hidden text-xs font-normal text-muted-foreground sm:inline lg:hidden xl:inline">by Skillglider</span>
           </Link>
 
           <nav className="hidden items-center gap-1 lg:flex" aria-label="Primary">
@@ -145,7 +145,7 @@ export function SiteHeader({
                   key={link.href}
                   href={link.href}
                   className={cn(
-                    "relative rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground",
+                    "relative rounded-md px-2 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground xl:px-3",
                     active && "text-foreground",
                   )}
                 >
@@ -153,7 +153,7 @@ export function SiteHeader({
                   {active && (
                     <motion.span
                       layoutId="nav-underline"
-                      className="absolute inset-x-3 -bottom-0.5 h-[2px] rounded-full bg-primary"
+                      className="absolute inset-x-2 -bottom-0.5 h-[2px] rounded-full bg-primary xl:inset-x-3"
                       transition={{ type: "spring", stiffness: 380, damping: 32 }}
                     />
                   )}

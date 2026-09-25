@@ -36,12 +36,13 @@ function LoginPageInner() {
     e.preventDefault();
     setError(null);
     startTransition(async () => {
-      const result = await signIn(email, password);
+      // The destination is validated server-side (same-origin paths only).
+      const result = await signIn(email, password, next);
       if (!result.ok) {
         setError(result.error ?? "Unable to sign in. Check your email and password and try again.");
         return;
       }
-      router.replace(next || result.redirectTo || "/portal");
+      router.replace(result.redirectTo || "/portal");
       router.refresh();
     });
   }
@@ -58,7 +59,9 @@ function LoginPageInner() {
           >
             <ArrowLeft className="h-4 w-4" /> Back to home
           </Link>
-          <CardTitle className="font-heading text-2xl">Welcome to Zing Hackathon</CardTitle>
+          <CardTitle className="font-heading text-2xl">
+            <h1>Welcome to Zing Hackathon</h1>
+          </CardTitle>
           <CardDescription>Sign in with your registered email and password.</CardDescription>
         </CardHeader>
         <CardContent>
@@ -119,22 +122,16 @@ function LoginPageInner() {
                 </AccordionTrigger>
                 <AccordionContent className="space-y-2 text-sm text-muted-foreground">
                   <p>
-                    If you just registered, your temporary password is built from your own details: no email
-                    required:
-                  </p>
-                  <ul className="list-inside list-disc space-y-1">
-                    <li>First 2 letters of your team name</li>
-                    <li>First 3 letters of your own name</li>
-                    <li>Your 4-digit birth year</li>
-                  </ul>
-                  <p>
-                    All lowercase, spaces and punctuation removed. Example: team <strong>Zing</strong>, name{" "}
-                    <strong>Rajavarma</strong>, born <strong>1998</strong> →{" "}
-                    <code className="rounded bg-muted px-1 py-0.5 font-mono">ziraj1998</code>.
+                    After your team registers, each member receives an invitation email. Open the link in that
+                    email to set your own private password, then sign in here with your email and that password.
                   </p>
                   <p>
-                    You&apos;ll be asked to set your own private password the first time you sign in. We never
-                    display another participant&apos;s temporary password: each person computes their own.
+                    Didn&apos;t get the email? Check your spam folder, then contact support with your team reference
+                    ID. Nobody else, including your team lead or the organizers, can see or set your password.
+                  </p>
+                  <p>
+                    Registered before invitation emails were introduced? Sign in with the temporary password you
+                    were given at registration; you&apos;ll be asked to set a private password straight away.
                   </p>
                 </AccordionContent>
               </AccordionItem>

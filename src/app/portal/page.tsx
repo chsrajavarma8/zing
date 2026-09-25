@@ -24,6 +24,14 @@ import { shouldShowWhatsappGroupButton } from "@/lib/whatsapp";
 import { Reveal } from "@/components/motion/reveal";
 import type { Round, Submission } from "@/types/database";
 
+// BUG-027: the card shows the team's own review status, never the event's
+// registration window.
+const TEAM_STATUS_LABEL: Record<string, string> = {
+  pending: "Pending review",
+  verified: "Verified",
+  disqualified: "Disqualified",
+};
+
 export default async function PortalDashboardPage() {
   const portal = await getPortalContext();
   if (!portal) return null;
@@ -58,10 +66,10 @@ export default async function PortalDashboardPage() {
   const registrationStatus = getRegistrationStatus(event);
   const hasReleasedResults = (publications as unknown as { round_id: string; is_published: boolean }[] | null)?.some((p) => p.is_published) ?? false;
 
+  // Reaching the portal already requires a private password (the layout
+  // redirects legacy temporary-password accounts to /change-password), so
+  // there is no "finish setting up" action to show here any more (BUG-005).
   const requiredActions: { label: string; href: string }[] = [];
-  if (membership.verification_status !== "verified") {
-    requiredActions.push({ label: "Set your private password to finish setting up your account", href: "/change-password" });
-  }
   if (currentRound) {
     const submission = submissionList.find((s) => s.round_id === currentRound.id);
     const hasSubmitted = Boolean(submission?.drive_folder_url || submission?.document_storage_path || submission?.document_link_url);
@@ -120,7 +128,12 @@ export default async function PortalDashboardPage() {
       <Reveal>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatusCard icon={Trophy} label="Current round" value={currentRound?.name ?? "TBA"} />
-          <StatusCard icon={CheckCircle2} label="Registration status" value={registrationStatus.isOpen ? "Open" : team.status === "verified" ? "Verified" : "Pending"} tone={team.status === "verified" ? "good" : undefined} />
+          <StatusCard
+            icon={CheckCircle2}
+            label={registrationStatus.isOpen ? "Team registration (registration open)" : "Team registration"}
+            value={TEAM_STATUS_LABEL[team.status] ?? team.status}
+            tone={team.status === "verified" ? "good" : team.status === "disqualified" ? "warn" : undefined}
+          />
           <StatusCard icon={Clock} label="Next deadline" value={upcomingDeadlines[0] ? formatDate(upcomingDeadlines[0].ends_at!) : "TBA"} />
           <StatusCard icon={ClipboardCheck} label="Submission status" value={submissionStatusSummary} />
         </div>

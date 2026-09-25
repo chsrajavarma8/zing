@@ -17,7 +17,9 @@ export async function sendEmail(params: { to: string; subject: string; html: str
   }
 
   try {
-    const res = await fetch("https://api.resend.com/emails", {
+    // RESEND_API_URL exists only so tests can point delivery at a local mock;
+    // production uses Resend's real endpoint.
+    const res = await fetch(process.env.RESEND_API_URL || "https://api.resend.com/emails", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,

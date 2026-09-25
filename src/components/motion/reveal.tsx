@@ -23,9 +23,14 @@ export function Reveal({ children, delay = 0, className, y = 18, once = true, id
     ? { hidden: { opacity: 1, y: 0 }, visible: { opacity: 1, y: 0 } }
     : { hidden: { opacity: 0, y }, visible: { opacity: 1, y: 0 } };
 
+  // data-reveal lets CSS force the final state when JavaScript never runs
+  // (<noscript> rule in the root layout) and for reduced-motion users before
+  // hydration (globals.css) - the server-rendered opacity:0 must never hide
+  // essential content on its own (RISK-005).
   return (
     <motion.div
       id={id}
+      data-reveal=""
       className={className}
       initial="hidden"
       whileInView="visible"

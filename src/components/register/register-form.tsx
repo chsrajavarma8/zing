@@ -1,9 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useForm, useFieldArray, type SubmitHandler, type FieldErrors } from "react-hook-form";
+import { useForm, useFieldArray, type SubmitHandler, type SubmitErrorHandler, type FieldErrors } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { registrationSchema, type RegistrationInput, type ParticipantInput } from "@/lib/validations/registration";
+import {
+  registrationSchema,
+  memberCrossFieldIssues,
+  type RegistrationInput,
+  type ParticipantInput,
+} from "@/lib/validations/registration";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -55,8 +60,14 @@ interface CustomField {
 
 interface SuccessState {
   team: { referenceId: string; name: string };
-  members: { referenceId: string; email: string; fullName: string; role: string; accountReady: boolean }[];
+  members: { referenceId: string; email: string; fullName: string; role: string; accountStatus: "invited" | "existing_account" | "failed" }[];
 }
+
+const ACCOUNT_STATUS_LABEL: Record<SuccessState["members"][number]["accountStatus"], string> = {
+  invited: "Invitation emailed",
+  existing_account: "Sign in with existing account",
+  failed: "Needs support",
+};
 
 const STEPS = [{ label: "Team" }, { label: "Team Lead" }, { label: "Members" }, { label: "Review" }];
 
@@ -116,6 +127,49 @@ export function RegisterForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Cross-field rules (education-specific fields, WhatsApp, duplicates within
+  // the team, required gender) for the members on the current step. These
+  // must be checked explicitly per step: the schema's own superRefine only
+  // runs once every other field - including the final step's consent boxes -
+  // is valid, which used to hide these errors until submit (BUG-004).
+  function checkMembers(indices?: number[]): boolean {
+    const members = form.getValues("members");
+    let ok = true;
+    for (const issue of memberCrossFieldIssues(members, indices)) {
+      ok = false;
+      if (issue.path.length === 3) {
+        form.setError(`members.${issue.path[1]}.${issue.path[2]}`, { type: "custom", message: issue.message });
+      } else {
+        form.setError("members", { type: "custom", message: issue.message });
+      }
+    }
+    if (event.allowGenderField && event.genderFieldRequired) {
+      members.forEach((m, i) => {
+        if ((indices && !indices.includes(i)) || m.gender) return;
+        ok = false;
+        form.setError(`members.${i}.gender`, { type: "custom", message: "Select a gender option." });
+      });
+    }
+    return ok;
+  }
+
+  // If the final submit still fails validation, go back to the step that
+  // holds the first problem instead of failing silently on the review step.
+  const onInvalid: SubmitErrorHandler<RegistrationInput> = (errors) => {
+    let target = 3;
+    if (errors.teamName) target = 0;
+    else if (errors.members) {
+      const memberErrors = errors.members as unknown as Record<string, unknown> & { message?: string };
+      const indices = Object.keys(memberErrors).filter((k) => /^\d+$/.test(k)).map(Number);
+      target = indices.includes(0) ? 1 : 2;
+    }
+    if (target !== 3) {
+      setStep(target);
+      setStepError("Some details need attention. The fields that need fixing are highlighted below.");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
+
   async function goNext() {
     setCustomFieldError(null);
     setStepError(null);
@@ -141,7 +195,8 @@ export function RegisterForm({
         "members.0.mobile",
         "members.0.whatsapp",
       ]);
-      if (!ok) {
+      const crossOk = checkMembers([0]);
+      if (!ok || !crossOk) {
         setStepError("Check the highlighted fields before continuing.");
         return;
       }
@@ -154,7 +209,8 @@ export function RegisterForm({
         return;
       }
       const ok = await form.trigger("members");
-      if (!ok) {
+      const crossOk = checkMembers();
+      if (!ok || !crossOk) {
         setStepError("Check the highlighted fields before continuing.");
         return;
       }
@@ -198,7 +254,7 @@ export function RegisterForm({
   };
 
   if (success) {
-    const anyAccountFailed = success.members.some((m) => !m.accountReady);
+    const anyAccountFailed = success.members.some((m) => m.accountStatus === "failed");
     return (
       <div>
         <StepIndicator steps={[...STEPS, { label: "Confirmation" }]} current={STEPS.length} />
@@ -208,8 +264,8 @@ export function RegisterForm({
             <CheckCircle2 className="mb-2 h-10 w-10 text-emerald-500" />
             <CardTitle className="font-heading text-2xl">Your registration has been recorded.</CardTitle>
             <CardDescription>
-              Your team reference is <strong>{success.team.referenceId}</strong>. Each participant can now sign in
-              with a temporary password.
+              Your team reference is <strong>{success.team.referenceId}</strong>. Each participant will receive an
+              email with a link to set their own password.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -226,8 +282,10 @@ export function RegisterForm({
                     type="button"
                     className="text-muted-foreground hover:text-foreground"
                     onClick={() => {
-                      navigator.clipboard.writeText(success.team.referenceId);
-                      toast.success("Copied to clipboard");
+                      navigator.clipboard
+                        .writeText(success.team.referenceId)
+                        .then(() => toast.success("Copied to clipboard"))
+                        .catch(() => toast.error("Couldn't copy. Select the reference and copy it manually."));
                     }}
                     aria-label="Copy team reference"
                   >
@@ -255,8 +313,8 @@ export function RegisterForm({
                   </div>
                   <div className="text-right">
                     <p className="font-mono text-xs">{m.referenceId}</p>
-                    <Badge variant={m.accountReady ? "outline" : "destructive"}>
-                      {m.accountReady ? "Ready to sign in" : "Needs support"}
+                    <Badge variant={m.accountStatus === "failed" ? "destructive" : "outline"}>
+                      {ACCOUNT_STATUS_LABEL[m.accountStatus]}
                     </Badge>
                   </div>
                 </div>
@@ -265,12 +323,11 @@ export function RegisterForm({
 
             <Alert>
               <KeyRound className="h-4 w-4" />
-              <AlertTitle>Next step: sign in with your temporary password</AlertTitle>
+              <AlertTitle>Next step: check your email</AlertTitle>
               <AlertDescription>
-                No email is sent. Each team member signs in with their own email and a temporary password built
-                from their team name, their own name, and their birth year: see &quot;First-time login
-                instructions&quot; on the sign-in page for the exact formula. You&apos;ll be asked to set a private
-                password the first time you sign in; no one else, including the team lead, can set it for you.
+                Each team member receives an invitation email. Open the link in it to set your own private
+                password, then sign in with your email and that password. Members who already had an account sign
+                in with their existing password. No one else, including the team lead, can set a password for you.
               </AlertDescription>
             </Alert>
 
@@ -318,7 +375,7 @@ export function RegisterForm({
     <div>
       <StepIndicator steps={STEPS} current={step} />
 
-      <form onSubmit={form.handleSubmit(onSubmit)} noValidate className="space-y-6">
+      <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} noValidate className="space-y-6">
         {/* STEP 0: Team details */}
         {step === 0 && (
           <Card className="card-glow">
@@ -584,17 +641,26 @@ function MemberFields({
   const sameAsMobile = form.watch(`members.${index}.whatsappSameAsMobile`);
   const educationLevel = form.watch(`members.${index}.educationLevel`);
 
+  // Associates each input with its error message for assistive tech (BUG-017).
+  const a11y = (field: keyof ParticipantInput) => {
+    const hasError = Boolean(errors?.[field]?.message);
+    return {
+      "aria-invalid": hasError || undefined,
+      "aria-describedby": hasError ? `members.${index}.${field}-error` : undefined,
+    };
+  };
+
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <div className="space-y-2">
         <Label htmlFor={`members.${index}.fullName`}>Full name</Label>
-        <Input id={`members.${index}.fullName`} placeholder="As per school/college ID" {...form.register(`members.${index}.fullName`)} />
-        <FieldError err={errors?.fullName} />
+        <Input id={`members.${index}.fullName`} placeholder="As per school/college ID" {...form.register(`members.${index}.fullName`)} {...a11y("fullName")} />
+        <FieldError id={`members.${index}.fullName-error`} err={errors?.fullName} />
       </div>
       <div className="space-y-2">
         <Label htmlFor={`members.${index}.dateOfBirth`}>Date of birth</Label>
-        <Input type="date" id={`members.${index}.dateOfBirth`} {...form.register(`members.${index}.dateOfBirth`)} />
-        <FieldError err={errors?.dateOfBirth} />
+        <Input type="date" id={`members.${index}.dateOfBirth`} {...form.register(`members.${index}.dateOfBirth`)} {...a11y("dateOfBirth")} />
+        <FieldError id={`members.${index}.dateOfBirth-error`} err={errors?.dateOfBirth} />
       </div>
       <div className="space-y-2 sm:col-span-2">
         <Label htmlFor={`members.${index}.educationLevel`}>Studying in</Label>
@@ -616,29 +682,29 @@ function MemberFields({
         <Input
           id={`members.${index}.college`}
           placeholder={educationLevel === "school" ? "e.g. Delhi Public School" : "e.g. IIT Bombay"}
-          {...form.register(`members.${index}.college`)}
+          {...form.register(`members.${index}.college`)} {...a11y("college")}
         />
-        <FieldError err={errors?.college} />
+        <FieldError id={`members.${index}.college-error`} err={errors?.college} />
       </div>
       {educationLevel === "school" ? (
         <div className="space-y-2">
           <Label htmlFor={`members.${index}.classGrade`}>Class / grade</Label>
-          <Input id={`members.${index}.classGrade`} placeholder="e.g. Class 10" {...form.register(`members.${index}.classGrade`)} />
-          <FieldError err={errors?.classGrade} />
+          <Input id={`members.${index}.classGrade`} placeholder="e.g. Class 10" {...form.register(`members.${index}.classGrade`)} {...a11y("classGrade")} />
+          <FieldError id={`members.${index}.classGrade-error`} err={errors?.classGrade} />
         </div>
       ) : (
         <div className="space-y-2">
           <Label htmlFor={`members.${index}.rollNumber`}>College roll number</Label>
-          <Input id={`members.${index}.rollNumber`} {...form.register(`members.${index}.rollNumber`)} />
+          <Input id={`members.${index}.rollNumber`} {...form.register(`members.${index}.rollNumber`)} {...a11y("rollNumber")} />
           <p className="text-xs text-muted-foreground">Enter your roll number as issued by your institution.</p>
-          <FieldError err={errors?.rollNumber} />
+          <FieldError id={`members.${index}.rollNumber-error`} err={errors?.rollNumber} />
         </div>
       )}
       <div className="space-y-2">
         <Label htmlFor={`members.${index}.email`}>Email address</Label>
-        <Input type="email" id={`members.${index}.email`} placeholder="you@college.edu" {...form.register(`members.${index}.email`)} />
+        <Input type="email" id={`members.${index}.email`} placeholder="you@college.edu" {...form.register(`members.${index}.email`)} {...a11y("email")} />
         <p className="text-xs text-muted-foreground">This is your sign-in username: no email is sent, so it just needs to be correct.</p>
-        <FieldError err={errors?.email} />
+        <FieldError id={`members.${index}.email-error`} err={errors?.email} />
       </div>
       <div className="space-y-2">
         <Label htmlFor={`members.${index}.mobile`}>Mobile number</Label>
@@ -649,10 +715,10 @@ function MemberFields({
             placeholder="10-digit mobile number"
             inputMode="numeric"
             maxLength={10}
-            {...form.register(`members.${index}.mobile`)}
+            {...form.register(`members.${index}.mobile`)} {...a11y("mobile")}
           />
         </div>
-        <FieldError err={errors?.mobile} />
+        <FieldError id={`members.${index}.mobile-error`} err={errors?.mobile} />
       </div>
       <div className="space-y-2 sm:col-span-2">
         <div className="flex items-center gap-2">
@@ -676,10 +742,10 @@ function MemberFields({
                 placeholder="10-digit WhatsApp number"
                 inputMode="numeric"
                 maxLength={10}
-                {...form.register(`members.${index}.whatsapp`)}
+                {...form.register(`members.${index}.whatsapp`)} {...a11y("whatsapp")}
               />
             </div>
-            <FieldError err={errors?.whatsapp} />
+            <FieldError id={`members.${index}.whatsapp-error`} err={errors?.whatsapp} />
           </div>
         )}
       </div>
@@ -704,14 +770,18 @@ function MemberFields({
             </SelectContent>
           </Select>
           <p className="text-xs text-muted-foreground">Kept private - never shown on any public page.</p>
-          <FieldError err={errors?.gender} />
+          <FieldError id={`members.${index}.gender-error`} err={errors?.gender} />
         </div>
       )}
     </div>
   );
 }
 
-function FieldError({ err }: { err?: { message?: string } }) {
+function FieldError({ err, id }: { err?: { message?: string }; id: string }) {
   if (!err?.message) return null;
-  return <p className="text-sm text-destructive">{err.message}</p>;
+  return (
+    <p id={id} className="text-sm text-destructive" role="alert">
+      {err.message}
+    </p>
+  );
 }

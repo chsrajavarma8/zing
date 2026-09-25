@@ -36,8 +36,8 @@ export function AnnouncementsEditor({ eventId, announcements }: { eventId: strin
     <div className="space-y-4">
       <Card>
         <CardContent className="space-y-3 pt-6">
-          <Input placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
-          <Textarea placeholder="Body" rows={3} value={body} onChange={(e) => setBody(e.target.value)} />
+          <Input aria-label="New announcement title" placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} />
+          <Textarea aria-label="New announcement message" placeholder="Body" rows={3} value={body} onChange={(e) => setBody(e.target.value)} />
           <Button onClick={add} disabled={busy}>
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
             Publish announcement
@@ -71,10 +71,10 @@ function AnnouncementRow({ announcement, eventId, onDeleted }: { announcement: A
     <Card>
       <CardContent className="space-y-3 pt-6">
         <div className="flex items-center gap-2">
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+          <Input aria-label="Announcement title" value={title} onChange={(e) => setTitle(e.target.value)} />
           {isPinned && <Badge variant="secondary">Pinned</Badge>}
         </div>
-        <Textarea rows={2} value={body} onChange={(e) => setBody(e.target.value)} />
+        <Textarea aria-label="Announcement message" rows={2} value={body} onChange={(e) => setBody(e.target.value)} />
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-4">
             <label className="flex items-center gap-2 text-sm">
@@ -92,9 +92,11 @@ function AnnouncementRow({ announcement, eventId, onDeleted }: { announcement: A
             <Button
               size="sm"
               variant="ghost"
+              aria-label={`Delete announcement: ${title || "untitled"}`}
               onClick={async () => {
-                const result = await deleteAnnouncement(announcement.id);
+                const result = await deleteAnnouncement(eventId, announcement.id);
                 if (result.ok) onDeleted();
+                else toast.error(result.error);
               }}
             >
               <Trash2 className="h-4 w-4" />

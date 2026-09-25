@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Zap, Mail, Phone, Globe } from "lucide-react";
 import { telHref } from "@/lib/utils";
+import { CookieSettingsButton } from "@/components/site/cookie-settings-button";
 
 export function SiteFooter({
   eventName = "Zing Hackathon",
@@ -62,20 +63,20 @@ export function SiteFooter({
           <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
             <li className="flex items-center gap-2">
               <Mail className="h-3.5 w-3.5 shrink-0" />
-              <a href={`mailto:${supportEmail}`} className="hover:text-foreground hover:underline">
+              <a href={`mailto:${supportEmail}`} className="min-w-0 wrap-anywhere hover:text-foreground hover:underline">
                 {supportEmail}
               </a>
             </li>
             <li className="flex items-center gap-2">
               <Phone className="h-3.5 w-3.5 shrink-0" />
-              <a href={telHref(supportPhone)} className="hover:text-foreground hover:underline">
+              <a href={telHref(supportPhone)} className="min-w-0 wrap-anywhere hover:text-foreground hover:underline">
                 {supportPhone}
               </a>
             </li>
             {supportWebsite && (
               <li className="flex items-center gap-2">
                 <Globe className="h-3.5 w-3.5 shrink-0" />
-                <a href={supportWebsite} target="_blank" rel="noopener noreferrer" className="hover:text-foreground hover:underline">
+                <a href={supportWebsite} target="_blank" rel="noopener noreferrer" className="min-w-0 wrap-anywhere hover:text-foreground hover:underline">
                   {supportWebsite.replace(/^https?:\/\//, "")}
                 </a>
               </li>
@@ -90,6 +91,8 @@ export function SiteFooter({
       </div>
       <div className="border-t border-border/70 py-4 text-center text-xs text-muted-foreground">
         © {new Date().getFullYear()} {organizerName}. All rights reserved.
+        <span aria-hidden> · </span>
+        <CookieSettingsButton className="underline underline-offset-4 hover:text-foreground" />
       </div>
     </footer>
   );

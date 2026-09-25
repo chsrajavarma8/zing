@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import type { Event } from "@/types/database";
 
@@ -5,7 +6,8 @@ import type { Event } from "@/types/database";
 // flagged is_default. Multi-event support (picking by slug) is available via
 // getEventBySlug for admin tooling; the public site can be pointed at a
 // different slug later without changing this file's shape.
-export async function getPublicEvent(): Promise<Event | null> {
+// Request-scoped memoization (RISK-004) - see getUserContext().
+export const getPublicEvent = cache(async function getPublicEvent(): Promise<Event | null> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("events")
@@ -13,7 +15,7 @@ export async function getPublicEvent(): Promise<Event | null> {
     .eq("is_default", true)
     .maybeSingle();
   return (data as unknown as Event) ?? null;
-}
+});
 
 export async function getEventBySlug(slug: string): Promise<Event | null> {
   const supabase = await createClient();

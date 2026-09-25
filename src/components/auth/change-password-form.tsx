@@ -44,7 +44,9 @@ export function ChangePasswordForm() {
   return (
     <Card className="card-glow relative w-full max-w-md">
       <CardHeader>
-        <CardTitle className="font-heading text-2xl">Create your private password</CardTitle>
+        <CardTitle className="font-heading text-2xl">
+            <h1>Create your private password</h1>
+          </CardTitle>
         <CardDescription>
           You signed in with a temporary password. Set a new, private password only you know before continuing to
           your dashboard.

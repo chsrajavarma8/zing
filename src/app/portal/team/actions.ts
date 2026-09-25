@@ -1,38 +1,55 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { participantSchema, validateWhatsapp, validateEducationFields } from "@/lib/validations/registration";
 import { normalizePhoneInput } from "@/lib/phone";
-import { provisionParticipantAccount, resyncTempPasswordsForTeam } from "@/lib/auth/participant-provisioning";
+import { inviteParticipant } from "@/lib/auth/participant-provisioning";
 import { requirePasswordChanged } from "@/lib/auth/guards";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
-// Gates every team-mutating action (add/remove member, rename, transfer
-// lead, delegate access) behind BOTH locks: registration_close_at (no new
-// registrations/changes after registration closes) and the later,
-// independent team_lock_at (team changes freeze once the hackathon starts,
-// per req. #5 - distinct from registration closing, since organizers may
-// want a gap between the two). Submissions are NOT gated by this - an open
-// round submission window must keep working after either lock (see
-// src/app/portal/submission/actions.ts, which only checks the round window).
-async function assertTeamMutable(eventId: string): Promise<string | null> {
+// Every team mutation here is authorized server-side (server actions are
+// public POST endpoints). Membership changes run through SECURITY DEFINER
+// RPCs (0043_security_integrity_fixes.sql) that verify the caller is the
+// team's lead, lock the team row, and apply the registration/team locks;
+// direct table updates confirm they actually changed a row. A denied or
+// missing target is reported as an error, never as success (BUG-019).
+
+type TeamActionResult = { ok: true; warning?: string } | { ok: false; error: string };
+
+// Maps database errors raised by the RPCs/triggers to user-facing text. The
+// RPCs raise deliberately worded messages; anything else is generic.
+function rpcError(error: { code?: string; message?: string } | null, fallback: string): string {
+  if (!error) return fallback;
+  if (error.code === "23505" && error.message?.includes("team_members_mobile_normalized_idx")) {
+    return "This mobile number is already registered with another participant.";
+  }
+  if (error.code === "23505") return "That email or roll number is already registered for this event.";
+  if (["42501", "22023", "P0002"].includes(error.code ?? "") && error.message) return error.message;
+  return fallback;
+}
+
+interface CallerTeam {
+  teamId: string;
+  eventId: string;
+  isLead: boolean;
+}
+
+// The caller's own membership in `teamId`, read through RLS (self rows only).
+async function callerTeam(teamId: string): Promise<CallerTeam | null> {
   const supabase = await createClient();
-  const { data: event } = await supabase
-    .from("events")
-    .select("registration_close_at, team_lock_at")
-    .eq("id", eventId)
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+  const { data } = await supabase
+    .from("team_members")
+    .select("team_id, event_id, role")
+    .eq("profile_id", user.id)
+    .eq("team_id", teamId)
     .maybeSingle();
-  const e = event as unknown as { registration_close_at: string | null; team_lock_at: string | null } | null;
-  const now = Date.now();
-  if (e?.team_lock_at && now > Date.parse(e.team_lock_at)) {
-    return "Team changes are locked — the hackathon has started.";
-  }
-  if (e?.registration_close_at && now > Date.parse(e.registration_close_at)) {
-    return "Team changes are locked — the registration deadline has passed.";
-  }
-  return null;
+  const row = data as { team_id: string; event_id: string; role: string } | null;
+  return row ? { teamId: row.team_id, eventId: row.event_id, isLead: row.role === "lead" } : null;
 }
 
 const newMemberSchema = participantSchema.omit({ role: true }).superRefine((m, ctx) => {
@@ -45,193 +62,131 @@ const newMemberSchema = participantSchema.omit({ role: true }).superRefine((m, c
   }
 });
 
-export async function addTeamMember(teamId: string, eventId: string, input: z.infer<typeof newMemberSchema>) {
-  const deadlineError = await assertTeamMutable(eventId);
-  if (deadlineError) return { ok: false, error: deadlineError };
-
+export async function addTeamMember(teamId: string, input: z.infer<typeof newMemberSchema>): Promise<TeamActionResult> {
   const parsed = newMemberSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "Please fix the highlighted fields." };
+  if (!parsed.success) {
+    const first = parsed.error.issues[0];
+    return { ok: false, error: first?.message ? `Check the member details: ${first.message}` : "Check the member details." };
+  }
 
   const supabase = await createClient();
-
   const guard = await requirePasswordChanged(supabase);
   if (!guard.ok) return { ok: false, error: guard.error };
 
-  const { count } = await supabase
-    .from("team_members")
-    .select("id", { count: "exact", head: true })
-    .eq("team_id", teamId);
-  const { data: event } = await supabase.from("events").select("team_size_max").eq("id", eventId).maybeSingle();
-  const max = (event as unknown as { team_size_max: number } | null)?.team_size_max ?? 4;
-  if ((count ?? 0) >= max) return { ok: false, error: `Your team already has the maximum of ${max} members.` };
-
-  const { data: teamRow } = await supabase.from("teams").select("team_name").eq("id", teamId).maybeSingle();
-  const teamName = (teamRow as unknown as { team_name: string } | null)?.team_name;
-  if (!teamName) return { ok: false, error: "Could not find your team." };
-
   const m = parsed.data;
-
-  // Friendly pre-check ahead of the DB's own unique constraint (source of
-  // truth under concurrent submissions - see 0034_team_members_mobile_uniqueness.sql).
-  // Uses the admin client deliberately: team_members_select RLS would hide a
-  // duplicate belonging to a different team from the caller's own session,
-  // silently defeating this check for exactly the cross-team case it exists
-  // to catch. Only a boolean existence result is derived from it - nothing
-  // about the other row is returned to the caller.
-  const mobileCheckClient = createAdminClient();
-  const { count: mobileTaken } = await mobileCheckClient
-    .from("team_members")
-    .select("id", { count: "exact", head: true })
-    .eq("mobile", m.mobile);
-  if ((mobileTaken ?? 0) > 0) {
-    return { ok: false, error: "This mobile number is already registered with another participant." };
-  }
-
-  // RLS team_members_insert requires the caller to be the team's lead.
-  const { data: inserted, error } = await supabase
-    .from("team_members")
-    .insert({
-      event_id: eventId,
-      team_id: teamId,
-      role: "member",
+  const { data: memberId, error } = await supabase.rpc("lead_add_team_member", {
+    p_team_id: teamId,
+    p_member: {
       full_name: m.fullName,
       date_of_birth: m.dateOfBirth,
       education_level: m.educationLevel,
       college: m.college,
-      roll_number: m.educationLevel === "college" ? m.rollNumber || null : null,
-      class_grade: m.educationLevel === "school" ? m.classGrade || null : null,
-      email: m.email.toLowerCase(),
+      roll_number: m.rollNumber,
+      class_grade: m.classGrade,
+      email: m.email,
       mobile: m.mobile,
       whatsapp: m.whatsappSameAsMobile ? m.mobile : normalizePhoneInput(m.whatsapp),
       whatsapp_same_as_mobile: m.whatsappSameAsMobile,
-      gender: m.gender || null,
-      consent_accepted: true,
-      communication_consent_essential: true,
-    })
-    .select("id")
-    .single();
-
-  if (error || !inserted) {
-    const msg = error?.message.includes("team_members_mobile_normalized_idx")
-      ? "This mobile number is already registered with another participant."
-      : error?.message.includes("duplicate")
-        ? "That email or roll number is already registered for this event."
-        : "Could not add member.";
-    return { ok: false, error: msg };
-  }
-
-  // The new member's account is created here with a temporary password they
-  // compute themselves (team name + their own name + DOB) - no email is
-  // sent, and the team lead never sees or sets a password on their behalf.
-  const outcome = await provisionParticipantAccount({
-    email: m.email.toLowerCase(),
-    teamName,
-    fullName: m.fullName,
-    dateOfBirth: m.dateOfBirth,
+      gender: m.gender || "",
+    },
   });
-  // Only link immediately if this created a brand-new account. If the email
-  // already belongs to someone else's existing account, it's linked later,
-  // only once that account's real owner proves ownership by signing in with
-  // their own password (see the link-sweep in src/app/login/actions.ts).
-  if (outcome.status === "created") {
-    const admin = createAdminClient();
-    await admin.from("team_members").update({ profile_id: outcome.profileId }).eq("id", (inserted as { id: string }).id);
-  }
+  if (error || !memberId) return { ok: false, error: rpcError(error, "Could not add member.") };
 
   revalidatePath("/portal/team");
+
+  // The new member gets their own invitation email (BUG-010).
+  const outcome = await inviteParticipant({ email: m.email, fullName: m.fullName, teamMemberId: memberId as string });
+  if (outcome.status === "failed") {
+    return { ok: true, warning: `Member added, but ${outcome.error.toLowerCase()} Ask an organizer to resend it.` };
+  }
+  if (outcome.status === "existing_account") {
+    return { ok: true, warning: "Member added. They already have an account and should sign in with their existing password." };
+  }
   return { ok: true };
 }
 
-export async function removeTeamMember(memberId: string, eventId: string) {
-  const deadlineError = await assertTeamMutable(eventId);
-  if (deadlineError) return { ok: false, error: deadlineError };
-
+export async function removeTeamMember(memberId: string): Promise<TeamActionResult> {
   const supabase = await createClient();
+  const guard = await requirePasswordChanged(supabase);
+  if (!guard.ok) return { ok: false, error: guard.error };
 
-  const { data: member } = await supabase.from("team_members").select("team_id").eq("id", memberId).maybeSingle();
-  const teamId = (member as { team_id: string } | null)?.team_id;
-  if (!teamId) return { ok: false, error: "Could not find this member." };
+  const { data, error } = await supabase.rpc("lead_remove_team_member", { p_member_id: memberId });
+  if (error || data !== memberId) return { ok: false, error: rpcError(error, "Could not remove member.") };
 
-  const [{ count }, { data: event }] = await Promise.all([
-    supabase.from("team_members").select("id", { count: "exact", head: true }).eq("team_id", teamId),
-    supabase.from("events").select("team_size_min").eq("id", eventId).maybeSingle(),
-  ]);
-  const teamSizeMin = (event as { team_size_min: number } | null)?.team_size_min ?? 1;
-  if ((count ?? 0) <= teamSizeMin) {
-    return { ok: false, error: `Your team must have at least ${teamSizeMin} members - remove someone else after adding a replacement, or contact support.` };
-  }
-
-  // RLS team_members_delete requires the caller to be the team's lead (or staff).
-  const { error } = await supabase.from("team_members").delete().eq("id", memberId).neq("role", "lead");
-
-  if (error) return { ok: false, error: "Could not remove member." };
   revalidatePath("/portal/team");
+  revalidatePath("/portal");
   return { ok: true };
 }
 
-export async function renameTeam(teamId: string, eventId: string, teamName: string) {
-  const deadlineError = await assertTeamMutable(eventId);
-  if (deadlineError) return { ok: false, error: deadlineError };
-
-  const trimmed = teamName.trim();
+// BUG-001: renaming is lead-only, confirmed by the returned row, and has no
+// side effects on anyone's credentials (the formula-based password resync
+// that used to run here is gone along with formula passwords).
+export async function renameTeam(teamId: string, teamName: string): Promise<TeamActionResult> {
+  const trimmed = typeof teamName === "string" ? teamName.trim() : "";
   if (trimmed.length < 2 || trimmed.length > 120) {
     return { ok: false, error: "Enter a team name between 2 and 120 characters." };
   }
 
   const supabase = await createClient();
-  // RLS teams_update requires the caller to be the team's lead (or staff).
-  const { error } = await supabase.from("teams").update({ team_name: trimmed }).eq("id", teamId);
-  if (error) return { ok: false, error: "Could not rename team." };
+  const guard = await requirePasswordChanged(supabase);
+  if (!guard.ok) return { ok: false, error: guard.error };
 
-  await resyncTempPasswordsForTeam(teamId, trimmed);
+  const caller = await callerTeam(teamId);
+  if (!caller?.isLead) return { ok: false, error: "Only the team lead can rename the team." };
+
+  // RLS (teams_update) + the protect_team_fields_lock trigger remain the
+  // boundary; .select() proves a row was actually updated.
+  const { data, error } = await supabase.from("teams").update({ team_name: trimmed }).eq("id", teamId).select("id");
+  if (error) return { ok: false, error: rpcError(error, "Could not rename team.") };
+  if (!data || data.length !== 1) return { ok: false, error: "Only the team lead can rename the team." };
 
   revalidatePath("/portal/team");
   revalidatePath("/portal");
   return { ok: true };
 }
 
-// Runs the security-definer transfer_team_lead() RPC (0022_team_lead_transfer_and_delegate.sql),
-// which re-verifies server-side that the caller is the current lead and
-// that the target is an actual member of this team before flipping roles -
-// this app-layer check is only for a clean early error message, not the
-// real authorization boundary.
-export async function transferTeamLead(teamId: string, eventId: string, newLeadMemberId: string) {
-  const deadlineError = await assertTeamMutable(eventId);
-  if (deadlineError) return { ok: false, error: deadlineError };
-
+// Runs the security-definer transfer_team_lead() RPC, which re-verifies the
+// caller is the current lead and the target is a member, under a team lock.
+export async function transferTeamLead(teamId: string, newLeadMemberId: string): Promise<TeamActionResult> {
   const supabase = await createClient();
+  const guard = await requirePasswordChanged(supabase);
+  if (!guard.ok) return { ok: false, error: guard.error };
+
   const { error } = await supabase.rpc("transfer_team_lead", {
     p_team_id: teamId,
     p_new_lead_member_id: newLeadMemberId,
   });
-  if (error) return { ok: false, error: error.message || "Could not transfer leadership." };
+  if (error) return { ok: false, error: rpcError(error, "Could not transfer leadership.") };
 
   revalidatePath("/portal/team");
   revalidatePath("/portal");
   return { ok: true };
 }
 
-export async function setSubmissionDelegate(teamId: string, eventId: string, memberId: string | null) {
-  const deadlineError = await assertTeamMutable(eventId);
-  if (deadlineError) return { ok: false, error: deadlineError };
-
+export async function setSubmissionDelegate(teamId: string, memberId: string | null): Promise<TeamActionResult> {
   const supabase = await createClient();
+  const guard = await requirePasswordChanged(supabase);
+  if (!guard.ok) return { ok: false, error: guard.error };
+
+  const caller = await callerTeam(teamId);
+  if (!caller?.isLead) return { ok: false, error: "Only the team lead can change submission access." };
 
   if (memberId) {
-    const { data: member } = await supabase
-      .from("team_members")
-      .select("id, team_id, role")
-      .eq("id", memberId)
-      .maybeSingle();
-    const m = member as unknown as { id: string; team_id: string; role: string } | null;
+    const { data: member } = await supabase.from("team_roster").select("id, team_id, role").eq("id", memberId).maybeSingle();
+    const m = member as { id: string; team_id: string; role: string } | null;
     if (!m || m.team_id !== teamId) return { ok: false, error: "That person is not a member of this team." };
     if (m.role === "lead") return { ok: false, error: "The lead already has full submission access." };
   }
 
-  // RLS teams_update requires the caller to be the team's lead (or staff).
-  const { error } = await supabase.from("teams").update({ submission_delegate_member_id: memberId }).eq("id", teamId);
-  if (error) return { ok: false, error: "Could not update delegate access." };
+  const { data, error } = await supabase
+    .from("teams")
+    .update({ submission_delegate_member_id: memberId })
+    .eq("id", teamId)
+    .select("id");
+  if (error) return { ok: false, error: rpcError(error, "Could not update delegate access.") };
+  if (!data || data.length !== 1) return { ok: false, error: "Only the team lead can change submission access." };
 
   revalidatePath("/portal/team");
+  revalidatePath("/portal/submission");
   return { ok: true };
 }

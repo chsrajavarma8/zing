@@ -12,15 +12,15 @@ export function DocumentRow({ document, canManage }: { document: Document; canMa
   const router = useRouter();
 
   return (
-    <div className="flex items-center justify-between rounded-md border p-3 text-sm">
-      <div className="flex items-center gap-3">
-        <FileText className="h-4 w-4 text-primary" />
-        <div>
-          <p className="font-medium">{document.title}</p>
+    <div className="flex items-center justify-between gap-3 rounded-md border p-3 text-sm">
+      <div className="flex min-w-0 items-center gap-3">
+        <FileText className="h-4 w-4 shrink-0 text-primary" />
+        <div className="min-w-0">
+          <p className="break-words font-medium">{document.title}</p>
           <Badge variant="outline" className="mt-1 capitalize">{document.type.replace("_", " ")}</Badge>
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         <a
           href={`/api/documents/${document.id}/download`}
           target="_blank"

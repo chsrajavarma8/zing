@@ -19,7 +19,10 @@ export default async function AdminJudgingPage({ searchParams }: { searchParams:
 
   const [{ data: criteria }, { data: teams }, { data: finalScores }, { data: publications }, { data: qualifications }] = await Promise.all([
     supabase.from("judging_criteria").select("*").eq("round_id", activeRound.id).order("order_index"),
-    supabase.from("teams").select("*").eq("event_id", ctx.event.id).neq("status", "disqualified").order("team_name"),
+    // Disqualified teams stay listed (marked) so their historical scores can
+    // still be reviewed or removed; they are excluded from public rankings
+    // by the database views (BUG-014).
+    supabase.from("teams").select("*").eq("event_id", ctx.event.id).order("team_name"),
     supabase.from("final_scores").select("*, profiles(full_name, email)").eq("round_id", activeRound.id),
     supabase.from("publications").select("*").eq("round_id", activeRound.id),
     supabase.from("qualification_status").select("*").eq("round_id", activeRound.id),

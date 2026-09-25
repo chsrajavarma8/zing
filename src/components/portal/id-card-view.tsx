@@ -10,6 +10,8 @@ import { Download, Loader2, ShieldCheck, ShieldX, Sparkles } from "lucide-react"
 import { toast } from "sonner";
 
 export function IdCardView({
+  verifyBaseUrl,
+  isCanonicalOrigin,
   token,
   revoked,
   fullName,
@@ -20,6 +22,8 @@ export function IdCardView({
   role,
   referenceId,
 }: {
+  verifyBaseUrl: string;
+  isCanonicalOrigin: boolean;
   token: string;
   revoked: boolean;
   fullName: string;
@@ -34,10 +38,12 @@ export function IdCardView({
   const [downloading, setDownloading] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
 
+  // The QR encodes the configured canonical origin, never whatever host this
+  // page happens to be served from (RISK-006).
   useEffect(() => {
-    const url = `${window.location.origin}/verify/${token}`;
+    const url = `${verifyBaseUrl}/verify/${encodeURIComponent(token)}`;
     QRCode.toDataURL(url, { margin: 1, width: 240 }).then(setQr).catch(() => setQr(null));
-  }, [token]);
+  }, [token, verifyBaseUrl]);
 
   // Renders ONLY the card element itself (not the page/nav/buttons) to a PNG
   // and triggers a real one-click file download - no print dialog, no
@@ -64,6 +70,11 @@ export function IdCardView({
 
   return (
     <div className="space-y-4">
+      {!isCanonicalOrigin && (
+        <p role="note" className="max-w-[340px] rounded-md border border-destructive/40 bg-destructive/5 p-2 text-xs text-destructive">
+          Test card: this QR code points to {verifyBaseUrl}, not the production site. Don&apos;t print it for the event.
+        </p>
+      )}
       <div ref={cardRef} className="inline-block w-full max-w-[340px] bg-white p-1">
         <Card className="card-glow mx-auto w-full overflow-hidden border-primary/30">
           <div

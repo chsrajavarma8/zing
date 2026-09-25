@@ -1,39 +1,35 @@
 import "server-only";
+import { createHash } from "node:crypto";
+import { createAdminClient } from "@/lib/supabase/admin";
 
-// Minimal in-memory sliding-window rate limiter.
+// Rate limiting (RISK-002).
 //
-// KNOWN LIMITATION (security audit, not yet fixed): this state is per
-// Node.js instance, not shared. On a multi-instance/serverless deployment
-// (e.g. Vercel with concurrent instances) each instance has its own
-// independent counters, so the effective limit is (configured limit) x
-// (instance count) - a distributed brute-force or registration-flood
-// attempt is undercounted. This needs Upstash Redis
-// (`vercel integration add upstash`) or equivalent shared storage before
-// this app is exposed to real internet traffic at scale; swap the body of
-// rateLimit() for a Redis-backed version with the same call signature.
+// sharedRateLimit() is the primary limiter: it counts hits in Postgres via
+// the service-role-only rate_limit_hit() function (0043_security_integrity_fixes.sql),
+// so every serverless instance shares the same counters. Keys are SHA-256
+// hashed before leaving this process, so no raw email or IP is stored.
 //
-// This file also bounds its own memory: unlimited distinct keys (e.g. an
-// attacker cycling through many fake email addresses) would otherwise grow
-// this Map forever, since entries are only pruned lazily on the same key
-// being reused. A hard cap turns that into "rate limiting degrades" rather
-// than "the process runs out of memory".
+// If the database call itself fails, it falls back to the per-instance
+// in-memory limiter below rather than either blocking every request or
+// letting everything through unchecked.
 const buckets = new Map<string, number[]>();
 const MAX_TRACKED_KEYS = 50_000;
 
-export function rateLimit(key: string, limit: number, windowMs: number): { ok: boolean; retryAfterMs?: number } {
+export interface RateLimitResult {
+  ok: boolean;
+  retryAfterMs?: number;
+}
+
+export function memoryRateLimit(key: string, limit: number, windowMs: number): RateLimitResult {
   const now = Date.now();
   const timestamps = (buckets.get(key) ?? []).filter((t) => now - t < windowMs);
 
   if (timestamps.length >= limit) {
-    const retryAfterMs = windowMs - (now - timestamps[0]);
     buckets.set(key, timestamps);
-    return { ok: false, retryAfterMs };
+    return { ok: false, retryAfterMs: windowMs - (now - timestamps[0]) };
   }
 
   if (!buckets.has(key) && buckets.size >= MAX_TRACKED_KEYS) {
-    // Fail open rather than crash: an attacker flooding distinct keys
-    // degrades rate limiting for new keys instead of taking the process
-    // down. The oldest-inserted key is evicted to make room.
     const oldestKey = buckets.keys().next().value;
     if (oldestKey !== undefined) buckets.delete(oldestKey);
   }
@@ -41,4 +37,32 @@ export function rateLimit(key: string, limit: number, windowMs: number): { ok: b
   timestamps.push(now);
   buckets.set(key, timestamps);
   return { ok: true };
+}
+
+function hashKey(key: string): string {
+  return createHash("sha256").update(key).digest("hex");
+}
+
+export async function sharedRateLimit(key: string, limit: number, windowMs: number): Promise<RateLimitResult> {
+  try {
+    const admin = createAdminClient();
+    const { data, error } = await admin.rpc("rate_limit_hit", {
+      p_bucket: hashKey(key),
+      p_limit: limit,
+      p_window_seconds: Math.ceil(windowMs / 1000),
+    });
+    if (error) throw error;
+    const row = (data as { allowed: boolean; retry_after_seconds: number }[] | null)?.[0];
+    if (!row) throw new Error("rate_limit_hit returned no row");
+    return row.allowed ? { ok: true } : { ok: false, retryAfterMs: row.retry_after_seconds * 1000 };
+  } catch (err) {
+    console.error("[rate-limit] shared limiter unavailable, using per-instance fallback:", err);
+    return memoryRateLimit(key, limit, windowMs);
+  }
+}
+
+// Client IP as seen by the platform. On Vercel, x-forwarded-for is set by the
+// edge (the left-most value is the real client); x-real-ip is the fallback.
+export function clientIp(headers: Headers): string {
+  return headers.get("x-forwarded-for")?.split(",")[0]?.trim() || headers.get("x-real-ip")?.trim() || "unknown";
 }

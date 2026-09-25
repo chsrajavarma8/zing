@@ -30,9 +30,29 @@ export async function updateRound(roundId: string, eventId: string, input: Round
   // boundary underneath, but checking here first turns an RLS denial into a
   // clear message instead of a generic "Could not save round."
   const ctx = await getAdminContext();
-  if (!ctx || !canManage(ctx)) {
+  if (!ctx || !canManage(ctx) || ctx.event.id !== eventId) {
     return { ok: false, error: "You do not have permission to update rounds." };
   }
+
+  // Only these columns may be changed through this action (BUG-011): the
+  // payload arrives from a public server-action endpoint.
+  const ALLOWED: (keyof RoundUpdateInput)[] = [
+    "name",
+    "description",
+    "deliverables",
+    "evaluation_criteria",
+    "evaluation_guidelines",
+    "categories",
+    "advancement_rules",
+    "starts_at",
+    "ends_at",
+    "is_active",
+  ];
+  const patch: RoundUpdateInput = {};
+  for (const key of ALLOWED) {
+    if (input && Object.prototype.hasOwnProperty.call(input, key)) (patch as Record<string, unknown>)[key] = input[key];
+  }
+  input = patch;
 
   const supabase = await createClient();
   const { data: existing, error: fetchError } = await supabase

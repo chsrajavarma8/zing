@@ -86,11 +86,11 @@ export async function saveSubmission(input: SubmissionInput) {
 
 // Talent Round (and any other document-based round): a shareable document
 // link (e.g. Google Docs), independent of any uploaded file - a team may
-// provide either or both. File upload itself goes through
-// /api/portal/submissions/upload (multipart, can't go through a server
-// action), this action only handles the link half plus checklist-free save.
+// provide either or both. File uploads go directly to Storage through
+// /api/portal/submissions/upload-url + /complete; this action only handles
+// the link half.
 export async function saveDocumentLink(teamId: string, roundId: string, documentLinkUrl: string) {
-  const trimmed = documentLinkUrl.trim();
+  const trimmed = typeof documentLinkUrl === "string" ? documentLinkUrl.trim() : "";
   if (trimmed && !isValidHttpsUrl(trimmed)) {
     return { ok: false, error: "Enter a valid https:// document link." };
   }
@@ -102,6 +102,20 @@ export async function saveDocumentLink(teamId: string, roundId: string, document
 
   const windowCheck = await assertRoundWindowOpen(roundId);
   if (!windowCheck.ok) return windowCheck;
+
+  // BUG-025: clearing the link is only allowed when an uploaded file keeps
+  // the submission non-empty - never create or leave an empty submission.
+  if (!trimmed) {
+    const { data: existing } = await supabase
+      .from("submissions")
+      .select("document_storage_path")
+      .eq("team_id", teamId)
+      .eq("round_id", roundId)
+      .maybeSingle();
+    if (!(existing as { document_storage_path: string | null } | null)?.document_storage_path) {
+      return { ok: false, error: "Enter a document link or upload a file. To remove your submission, use Delete submission." };
+    }
+  }
 
   const {
     data: { user },
@@ -150,13 +164,29 @@ export async function deleteSubmission(submissionId: string, teamId: string, rou
   if (!row || row.team_id !== teamId) return { ok: false, error: "Submission not found." };
 
   // RLS submissions_delete requires the caller to be the team's lead or
-  // delegated submitter (or staff).
-  const { error } = await supabase.from("submissions").delete().eq("id", submissionId);
+  // delegated submitter (or staff); anyone else deletes zero rows WITHOUT an
+  // error. BUG-003: only touch Storage once the returned rows prove this
+  // caller really deleted this submission.
+  const { data: deleted, error } = await supabase
+    .from("submissions")
+    .delete()
+    .eq("id", submissionId)
+    .eq("team_id", teamId)
+    .select("id, document_storage_path");
   if (error) return { ok: false, error: "Could not delete submission." };
+  if (!deleted || deleted.length !== 1) {
+    return { ok: false, error: "Only the team lead or the delegated submitter can delete this submission." };
+  }
 
-  if (row.document_storage_path) {
+  const storagePath = (deleted[0] as { document_storage_path: string | null }).document_storage_path;
+  if (storagePath) {
     const admin = createAdminClient();
-    await admin.storage.from("team-submissions").remove([row.document_storage_path]);
+    const { error: removeError } = await admin.storage.from("team-submissions").remove([storagePath]);
+    if (removeError) {
+      // The submission record is gone (what the team asked for); the file is
+      // now an unreferenced object. Log it for cleanup rather than hiding it.
+      console.error("[deleteSubmission] submission deleted but file removal failed:", storagePath, removeError.message);
+    }
   }
 
   revalidatePath("/portal/submission");

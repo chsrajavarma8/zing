@@ -1,6 +1,7 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { findAuthUserIdByEmail, revokeAllSessions } from "@/lib/auth/participant-provisioning";
 
 export type SetupLinkMode = "invite" | "reset" | "failed";
 
@@ -63,12 +64,22 @@ export async function createAdminAccountWithPassword(params: {
 
   const admin = createAdminClient();
 
-  const { data: existingProfile } = await admin.from("profiles").select("id").eq("email", email).maybeSingle();
-  let userId = (existingProfile as { id: string } | null)?.id ?? null;
+  // Resolve the account by its verified Auth email (BUG-002) - never by
+  // profiles.email, which older migrations let users rewrite.
+  let userId: string | null;
+  try {
+    userId = await findAuthUserIdByEmail(email);
+  } catch {
+    return { ok: false, error: "Could not look up this email. Nothing was changed." };
+  }
 
   if (userId) {
     const { error } = await admin.auth.admin.updateUserById(userId, { password: params.password });
     if (error) return { ok: false, error: error.message || "Could not set the initial password." };
+    // Replacing an existing account's password must also end every session
+    // opened with the old credentials (RISK-003).
+    const revoked = await revokeAllSessions(userId);
+    if (!revoked.ok) return { ok: false, error: "Password replaced, but existing sessions could not be revoked. Try again." };
   } else {
     const { data, error } = await admin.auth.admin.createUser({
       email,

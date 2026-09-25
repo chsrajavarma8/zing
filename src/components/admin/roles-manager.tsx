@@ -115,12 +115,12 @@ export function RolesManager({ eventId, admins, pendingInvites }: { eventId: str
         </CardHeader>
         <CardContent className="space-y-2">
           {admins.map((a) => (
-            <div key={a.id} className="flex items-center justify-between rounded-md border p-3 text-sm">
-              <div>
-                <p className="font-medium">{a.profiles?.full_name || a.profiles?.email}</p>
-                <p className="text-muted-foreground">{a.profiles?.email}</p>
+            <div key={a.id} className="flex items-center justify-between gap-3 rounded-md border p-3 text-sm">
+              <div className="min-w-0">
+                <p className="break-words font-medium">{a.profiles?.full_name || a.profiles?.email}</p>
+                <p className="break-all text-muted-foreground">{a.profiles?.email}</p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
                 <Badge variant="outline" className="capitalize">{a.role.replace("_", " ")}</Badge>
                 <Button
                   variant="ghost"
@@ -151,8 +151,8 @@ export function RolesManager({ eventId, admins, pendingInvites }: { eventId: str
           </CardHeader>
           <CardContent className="space-y-2">
             {pendingInvites.map((inv) => (
-              <div key={inv.id} className="flex items-center justify-between rounded-md border p-3 text-sm">
-                <span>{inv.email}</span>
+              <div key={inv.id} className="flex items-center justify-between gap-3 rounded-md border p-3 text-sm">
+                <span className="min-w-0 break-all">{inv.email}</span>
                 <Badge variant="outline" className="capitalize">{inv.role.replace("_", " ")}</Badge>
               </div>
             ))}

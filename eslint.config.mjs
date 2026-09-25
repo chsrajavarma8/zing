@@ -12,6 +12,12 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generated/local-only directories that are not application source
+    // (BUG-030): nested agent worktrees (full copies of the repo) and the
+    // Supabase CLI's temp output (bundled edge-runtime code).
+    ".claude/**",
+    "supabase/.temp/**",
+    "supabase/.branches/**",
   ]),
 ]);
 

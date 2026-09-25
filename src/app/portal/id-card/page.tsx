@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { IdCardView } from "@/components/portal/id-card-view";
 import { Card, CardContent } from "@/components/ui/card";
 import { IdCard } from "lucide-react";
+import { idCardVerificationBase } from "@/lib/site-url";
 
 export default async function IdCardPage() {
   const portal = await getPortalContext();
@@ -16,6 +17,7 @@ export default async function IdCardPage() {
     .maybeSingle();
 
   const c = card as unknown as { qr_token: string; revoked: boolean; issued_at: string } | null;
+  const verify = idCardVerificationBase();
 
   return (
     <div className="space-y-6">
@@ -34,6 +36,8 @@ export default async function IdCardPage() {
           </Card>
         ) : (
           <IdCardView
+            verifyBaseUrl={verify.baseUrl}
+            isCanonicalOrigin={verify.isCanonical}
             token={c.qr_token}
             revoked={c.revoked}
             fullName={portal.membership.full_name}

@@ -34,10 +34,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   }
 
   return (
-    <div className="flex min-h-screen">
+    <div className="min-h-screen">
       <SkipLink />
-      <AdminSidebar role={ctx.role} />
-      <main id="main-content" className="flex-1 overflow-x-hidden px-4 py-6 sm:px-8 sm:py-8">
+      <AdminSidebar role={ctx.role} eventName={ctx.event.name} />
+      <main id="main-content" className="overflow-x-hidden px-4 py-6 sm:px-8 sm:py-8">
         <div className="mx-auto max-w-6xl">{children}</div>
       </main>
     </div>

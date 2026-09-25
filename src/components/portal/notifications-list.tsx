@@ -13,7 +13,7 @@ interface Row {
   id: string;
   read_at: string | null;
   channel: string;
-  notifications: { id: string; title: string; message: string; priority: string; action_link: string | null; created_at: string } | null;
+  notifications: { id: string; title: string; message: string; priority: string; action_link: string | null; created_at: string; sent_at: string | null; scheduled_at: string | null } | null;
 }
 
 const PRIORITY_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
@@ -81,7 +81,7 @@ export function NotificationsList({ items }: { items: Row[] }) {
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">{n.message}</p>
                 <div className="mt-2 flex items-center gap-3">
-                  <span className="text-xs text-muted-foreground">{formatDateTime(n.created_at)}</span>
+                  <span className="text-xs text-muted-foreground">{formatDateTime(n.sent_at ?? n.scheduled_at ?? n.created_at)}</span>
                   {n.action_link && (
                     <a href={n.action_link} className="text-xs text-primary underline underline-offset-4">
                       View

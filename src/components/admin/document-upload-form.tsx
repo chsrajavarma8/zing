@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Loader2, UploadCloud } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { directUpload } from "@/lib/direct-upload";
 
 const TYPES = [
   { value: "rules", label: "Rules & Regulations" },
@@ -31,17 +32,17 @@ export function DocumentUploadForm() {
       toast.error("Choose a file and give it a title.");
       return;
     }
-    const form = new FormData();
-    form.set("file", file);
-    form.set("title", title);
-    form.set("type", type);
-
     setBusy(true);
-    const res = await fetch("/api/admin/documents/upload", { method: "POST", body: form });
-    const data = await res.json();
+    const result = await directUpload({
+      bucket: "documents",
+      file,
+      urlEndpoint: "/api/admin/uploads/url",
+      completeEndpoint: "/api/admin/uploads/complete",
+      extra: { kind: "document", title: title.trim(), docType: type },
+    });
     setBusy(false);
-    if (!res.ok) {
-      toast.error(data.error ?? "Upload failed.");
+    if (!result.ok) {
+      toast.error(result.error);
       return;
     }
     toast.success("Document uploaded");
@@ -57,9 +58,9 @@ export function DocumentUploadForm() {
       </CardHeader>
       <CardContent className="flex flex-wrap items-end gap-3">
         <div className="space-y-2">
-          <Label>Type</Label>
+          <Label htmlFor="doc-upload-type">Type</Label>
           <Select value={type} onValueChange={setType}>
-            <SelectTrigger className="w-56">
+            <SelectTrigger id="doc-upload-type" className="w-56">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -72,12 +73,12 @@ export function DocumentUploadForm() {
           </Select>
         </div>
         <div className="space-y-2">
-          <Label>Title</Label>
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} className="w-56" />
+          <Label htmlFor="doc-upload-title">Title</Label>
+          <Input id="doc-upload-title" value={title} onChange={(e) => setTitle(e.target.value)} className="w-56 max-w-full" />
         </div>
         <div className="space-y-2">
-          <Label>File (PDF, PNG, JPG: max 25MB)</Label>
-          <Input type="file" ref={fileRef} accept=".pdf,.png,.jpg,.jpeg" />
+          <Label htmlFor="doc-upload-file">File (PDF, PNG, JPG: max 25MB)</Label>
+          <Input id="doc-upload-file" type="file" ref={fileRef} accept=".pdf,.png,.jpg,.jpeg" />
         </div>
         <Button onClick={upload} disabled={busy}>
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}

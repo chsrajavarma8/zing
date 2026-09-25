@@ -109,7 +109,7 @@ export function SubmissionReviewRow({ submission, eventId, canManage }: { submis
             <PopoverTrigger asChild>
               <Button size="sm" variant="outline">Review</Button>
             </PopoverTrigger>
-            <PopoverContent className="w-80 space-y-3">
+            <PopoverContent className="w-[min(20rem,calc(100vw-2rem))] space-y-3">
               <Select value={status} onValueChange={setStatus}>
                 <SelectTrigger className="w-full">
                   <SelectValue />

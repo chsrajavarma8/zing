@@ -15,7 +15,7 @@ export function RoundManagementTabs({ rounds, eventId, readOnly }: { rounds: Rou
 
   return (
     <Tabs defaultValue={rounds[0].key}>
-      <TabsList>
+      <TabsList className="max-w-full justify-start overflow-x-auto">
         {rounds.map((r) => (
           <TabsTrigger key={r.id} value={r.key}>
             {LABELS[r.key] ?? r.key}

@@ -76,6 +76,27 @@ export async function sendNotification(eventId: string, input: NotificationInput
   if (!ctx || !canManage(ctx)) return { ok: false, error: "Not authorized." };
   if (ctx.event.id !== eventId) return { ok: false, error: "Not authorized." };
 
+  const title = typeof input.title === "string" ? input.title.trim() : "";
+  const message = typeof input.message === "string" ? input.message.trim() : "";
+  if (!title || title.length > 200 || !message || message.length > 5000) {
+    return { ok: false, error: "Enter a title (up to 200 characters) and a message (up to 5000)." };
+  }
+
+  // A schedule time must be a real future instant; anything at or before now
+  // is simply sent now (it would be released immediately anyway).
+  let scheduledAt: string | null = null;
+  if (input.scheduledAt) {
+    const ms = Date.parse(input.scheduledAt);
+    if (Number.isNaN(ms)) return { ok: false, error: "Enter a valid schedule time." };
+    if (ms > Date.now()) scheduledAt = new Date(ms).toISOString();
+  }
+
+  // Links are either in-app paths or https URLs.
+  const actionLink = typeof input.actionLink === "string" ? input.actionLink.trim() : "";
+  if (actionLink && !(actionLink.startsWith("/") && !actionLink.startsWith("//")) && !/^https:\/\//i.test(actionLink)) {
+    return { ok: false, error: "The link must be an in-app path (starting with /) or an https:// URL." };
+  }
+
   const admin = createAdminClient();
   const uniqueRecipients = await resolveAudience(admin, eventId, input);
 
@@ -85,16 +106,18 @@ export async function sendNotification(eventId: string, input: NotificationInput
     .from("notifications")
     .insert({
       event_id: eventId,
-      title: input.title,
-      message: input.message,
+      title,
+      message,
       audience_type: input.audienceType,
       audience_filter: { teamIds: input.teamIds ?? null, emails: input.emails ?? null, roundId: input.roundId ?? null },
       priority: input.priority,
       related_round_id: input.roundId ?? null,
       channels: ["in_app"],
-      action_link: input.actionLink || null,
-      scheduled_at: input.scheduledAt || null,
-      sent_at: input.scheduledAt ? null : new Date().toISOString(),
+      action_link: actionLink || null,
+      // Scheduled notifications are hidden from recipients by the database
+      // until scheduled_at (notification_released, 0043) - BUG-006.
+      scheduled_at: scheduledAt,
+      sent_at: scheduledAt ? null : new Date().toISOString(),
       created_by: ctx.user.userId,
     })
     .select("id")
@@ -139,22 +162,34 @@ export async function sendNotification(eventId: string, input: NotificationInput
 // deliberately refuses to delete anything already sent.
 export async function cancelScheduledNotification(notificationId: string, eventId: string) {
   const ctx = await getAdminContext();
-  if (!ctx || !canManage(ctx)) return { ok: false, error: "Not authorized." };
+  if (!ctx || !canManage(ctx) || ctx.event.id !== eventId) return { ok: false, error: "Not authorized." };
 
   const supabase = await createClient();
   const { data: notification } = await supabase
     .from("notifications")
-    .select("id, title, sent_at")
+    .select("id, title, sent_at, scheduled_at")
     .eq("id", notificationId)
     .eq("event_id", eventId)
     .maybeSingle();
 
   if (!notification) return { ok: false, error: "Notification not found." };
-  const n = notification as unknown as { id: string; title: string; sent_at: string | null };
-  if (n.sent_at) return { ok: false, error: "Already sent — can't cancel a notification people have already received." };
+  const n = notification as unknown as { id: string; title: string; sent_at: string | null; scheduled_at: string | null };
+  // Recipients can read a scheduled notification from scheduled_at onwards
+  // (notification_released, 0043), whether or not the dispatcher has run yet.
+  const released = Boolean(n.sent_at) || (n.scheduled_at !== null && Date.parse(n.scheduled_at) <= Date.now());
+  if (released) return { ok: false, error: "Already delivered — can't cancel a notification people have already received." };
 
-  const { error } = await supabase.from("notifications").delete().eq("id", notificationId);
-  if (error) return { ok: false, error: "Could not cancel notification." };
+  // The time condition is repeated in the DELETE itself so a notification
+  // that becomes due between the check above and this statement is kept.
+  const { data: deleted, error } = await supabase
+    .from("notifications")
+    .delete()
+    .eq("id", notificationId)
+    .eq("event_id", eventId)
+    .is("sent_at", null)
+    .gt("scheduled_at", new Date().toISOString())
+    .select("id");
+  if (error || !deleted || deleted.length !== 1) return { ok: false, error: "Could not cancel notification." };
 
   await logAudit({
     actorProfileId: ctx.user.userId,

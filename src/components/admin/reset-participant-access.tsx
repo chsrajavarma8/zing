@@ -33,9 +33,8 @@ export function ResetParticipantAccess({ teamMemberId, eventId }: { teamMemberId
           <AlertDialogTitle>Reset this participant&apos;s access?</AlertDialogTitle>
           <AlertDialogDescription>
             Only do this after verifying their identity yourself (support email/phone, not just their date of
-            birth or team name). This regenerates their temporary password from the same formula shown on the
-            sign-in page and requires them to set a new private password on next sign-in. It never affects admin
-            accounts.
+            birth or team name). This emails a password-reset link to their registered address, then invalidates
+            their current password and signs them out everywhere. It never affects admin accounts.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
@@ -45,7 +44,12 @@ export function ResetParticipantAccess({ teamMemberId, eventId }: { teamMemberId
               startTransition(async () => {
                 const result = await resetParticipantAccess(teamMemberId, eventId);
                 if (!result.ok) toast.error(result.error ?? "Could not reset access.");
-                else toast.success("Access reset: they can sign in with the standard temporary-password formula.");
+                else
+                  toast.success(
+                    result.mode === "invited"
+                      ? "Invitation emailed: they can set a password from the link."
+                      : "Reset link emailed and existing sessions signed out.",
+                  );
               })
             }
           >

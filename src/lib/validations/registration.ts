@@ -10,11 +10,22 @@ import { GENDER_OPTIONS } from "@/lib/gender";
 // a plain ZodObject (callers like the "add member" action still `.omit()`
 // fields from it - see src/app/portal/team/actions.ts).
 export const EDUCATION_LEVELS = ["school", "college"] as const;
+
+// A real calendar date in YYYY-MM-DD form (what <input type="date"> sends and
+// what the date column stores), not in the future and not absurdly old.
+export function isValidBirthDate(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const [y, m, d] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const date = new Date(Date.UTC(y, m - 1, d));
+  if (date.getUTCFullYear() !== y || date.getUTCMonth() !== m - 1 || date.getUTCDate() !== d) return false;
+  return y >= 1900 && date.getTime() <= Date.now();
+}
 export type EducationLevel = (typeof EDUCATION_LEVELS)[number];
 
 export const participantSchema = z.object({
   fullName: z.string().trim().min(2, "Enter your full name.").max(120),
-  dateOfBirth: z.string().refine((v) => !Number.isNaN(Date.parse(v)), "Enter a valid date of birth."),
+  dateOfBirth: z.string().trim().refine(isValidBirthDate, "Enter a valid date of birth."),
   educationLevel: z.enum(EDUCATION_LEVELS),
   college: z.string().trim().min(2, "Enter your school or college name.").max(200),
   rollNumber: z.string().trim().max(60),
@@ -70,53 +81,74 @@ export const registrationSchema = z
     extraFields: z.record(z.string(), z.unknown()),
   })
   .superRefine((data, ctx) => {
-    const leads = data.members.filter((m) => m.role === "lead");
-    if (leads.length !== 1) {
-      ctx.addIssue({ code: "custom", message: "A team must have exactly one lead.", path: ["members"] });
+    for (const issue of memberCrossFieldIssues(data.members)) {
+      ctx.addIssue({ code: "custom", message: issue.message, path: issue.path });
     }
-    data.members.forEach((m, i) => {
-      if (!validateWhatsapp(m)) {
-        ctx.addIssue({ code: "custom", message: "Enter a valid WhatsApp number.", path: ["members", i, "whatsapp"] });
-      }
-      const educationIssue = validateEducationFields(m);
-      if (educationIssue) {
-        ctx.addIssue({ code: "custom", message: educationIssue.message, path: ["members", i, educationIssue.field] });
-      }
-    });
-    const emails = data.members.map((m) => m.email.toLowerCase());
-    if (new Set(emails).size !== emails.length) {
-      ctx.addIssue({ code: "custom", message: "This email is already used by another member of this team.", path: ["members"] });
-    }
-    const seenMobiles = new Map<string, number>();
-    data.members.forEach((m, i) => {
-      const prevIndex = seenMobiles.get(m.mobile);
-      if (prevIndex !== undefined) {
-        ctx.addIssue({
-          code: "custom",
-          message: "This mobile number is already used by another member of this team.",
-          path: ["members", i, "mobile"],
-        });
-      } else {
-        seenMobiles.set(m.mobile, i);
-      }
-    });
-    // Roll-number dedup only makes sense for college members who actually
-    // have one - school members share no such identifier.
-    const seenRolls = new Map<string, number>();
-    data.members.forEach((m, i) => {
-      if (m.educationLevel !== "college" || !m.rollNumber?.trim()) return;
-      const key = `${m.college.toLowerCase()}::${m.rollNumber.toLowerCase()}`;
-      const prevIndex = seenRolls.get(key);
-      if (prevIndex !== undefined) {
-        ctx.addIssue({
-          code: "custom",
-          message: "This college + roll number is already used by another member of this team.",
-          path: ["members"],
-        });
-      } else {
-        seenRolls.set(key, i);
-      }
-    });
   });
 
 export type RegistrationInput = z.infer<typeof registrationSchema>;
+
+export type MemberIssueField = "whatsapp" | "rollNumber" | "classGrade" | "email" | "mobile";
+
+export interface MemberIssue {
+  // ["members"] for team-level issues, ["members", i, field] for a member field.
+  path: ["members"] | ["members", number, MemberIssueField];
+  message: string;
+}
+
+type CrossFieldMember = Pick<
+  ParticipantInput,
+  "role" | "whatsapp" | "whatsappSameAsMobile" | "educationLevel" | "rollNumber" | "classGrade" | "email" | "mobile" | "college"
+>;
+
+// Cross-field rules that a per-field schema can't express (BUG-004). Used by
+// registrationSchema's superRefine (server + final submit) AND directly by
+// the multi-step form for each step, because Zod skips object-level
+// refinements while any other part of the object (e.g. the consent
+// checkboxes on the last step) is still invalid - which is exactly how these
+// errors used to stay hidden until the final step. `onlyIndices` limits
+// member-level checks to the members visible on the current step; duplicate
+// checks always compare against the whole team.
+export function memberCrossFieldIssues(members: CrossFieldMember[], onlyIndices?: number[]): MemberIssue[] {
+  const issues: MemberIssue[] = [];
+  const include = (i: number) => !onlyIndices || onlyIndices.includes(i);
+
+  if (!onlyIndices && members.filter((m) => m.role === "lead").length !== 1) {
+    issues.push({ path: ["members"], message: "A team must have exactly one lead." });
+  }
+
+  members.forEach((m, i) => {
+    if (!include(i)) return;
+    if (!validateWhatsapp(m)) issues.push({ path: ["members", i, "whatsapp"], message: "Enter a valid WhatsApp number." });
+    const educationIssue = validateEducationFields(m);
+    if (educationIssue) issues.push({ path: ["members", i, educationIssue.field], message: educationIssue.message });
+  });
+
+  const firstIndexOf = (key: (m: CrossFieldMember) => string | null) => {
+    const seen = new Map<string, number>();
+    return members.map((m, i) => {
+      const k = key(m);
+      if (!k) return -1;
+      if (seen.has(k)) return seen.get(k)!;
+      seen.set(k, i);
+      return -1;
+    });
+  };
+
+  const dupEmail = firstIndexOf((m) => m.email.trim().toLowerCase() || null);
+  const dupMobile = firstIndexOf((m) => normalizePhoneInput(m.mobile) || null);
+  const dupRoll = firstIndexOf((m) =>
+    m.educationLevel === "college" && m.rollNumber?.trim() ? `${m.college.trim().toLowerCase()}::${m.rollNumber.trim().toLowerCase()}` : null,
+  );
+
+  members.forEach((_, i) => {
+    if (!include(i)) return;
+    if (dupEmail[i] >= 0) issues.push({ path: ["members", i, "email"], message: "This email is already used by another member of this team." });
+    if (dupMobile[i] >= 0) issues.push({ path: ["members", i, "mobile"], message: "This mobile number is already used by another member of this team." });
+    if (dupRoll[i] >= 0) {
+      issues.push({ path: ["members", i, "rollNumber"], message: "This college + roll number is already used by another member of this team." });
+    }
+  });
+
+  return issues;
+}

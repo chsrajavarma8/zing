@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 
 export interface UserContext {
@@ -11,7 +12,11 @@ export interface UserContext {
   teamMemberships: { teamId: string; eventId: string; role: "lead" | "member"; verified: boolean }[];
 }
 
-export async function getUserContext(): Promise<UserContext | null> {
+// Request-scoped memoization (RISK-004): layouts and pages each call this, and
+// without cache() every call repeated the Auth round trip plus four queries.
+// React's cache() is scoped to a single server request, so identity and
+// permissions are never shared between users or requests.
+export const getUserContext = cache(async function getUserContext(): Promise<UserContext | null> {
   const supabase = await createClient();
   const {
     data: { user },
@@ -52,7 +57,7 @@ export async function getUserContext(): Promise<UserContext | null> {
         }),
       ) ?? [],
   };
-}
+});
 
 export function isStaff(ctx: UserContext | null): boolean {
   if (!ctx) return false;

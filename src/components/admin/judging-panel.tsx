@@ -81,7 +81,7 @@ export function JudgingPanel({ round, eventId, currentUserId, canManage, criteri
         </CardHeader>
         <CardContent className="space-y-3">
           {criteria.map((c) => (
-            <div key={c.id} className="flex items-center justify-between rounded-md border p-2 text-sm">
+            <div key={c.id} className="flex items-center justify-between gap-2 rounded-md border p-2 text-sm">
               <span>
                 {c.name} <span className="text-muted-foreground">({c.max_marks} marks, weight {c.weight})</span>
               </span>
@@ -100,16 +100,16 @@ export function JudgingPanel({ round, eventId, currentUserId, canManage, criteri
           {canManage && (
             <div className="flex flex-wrap items-end gap-2 pt-2">
               <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Name</label>
-                <Input value={newCriterion.name} onChange={(e) => setNewCriterion((s) => ({ ...s, name: e.target.value }))} className="w-48" />
+                <label htmlFor="criterion-name" className="text-xs text-muted-foreground">Name</label>
+                <Input id="criterion-name" value={newCriterion.name} onChange={(e) => setNewCriterion((s) => ({ ...s, name: e.target.value }))} className="w-48" />
               </div>
               <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Max marks</label>
-                <Input type="number" value={newCriterion.maxMarks} onChange={(e) => setNewCriterion((s) => ({ ...s, maxMarks: Number(e.target.value) }))} className="w-24" />
+                <label htmlFor="criterion-max" className="text-xs text-muted-foreground">Max marks</label>
+                <Input id="criterion-max" type="number" value={newCriterion.maxMarks} onChange={(e) => setNewCriterion((s) => ({ ...s, maxMarks: Number(e.target.value) }))} className="w-24" />
               </div>
               <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Weight</label>
-                <Input type="number" value={newCriterion.weight} onChange={(e) => setNewCriterion((s) => ({ ...s, weight: Number(e.target.value) }))} className="w-20" />
+                <label htmlFor="criterion-weight" className="text-xs text-muted-foreground">Weight</label>
+                <Input id="criterion-weight" type="number" value={newCriterion.weight} onChange={(e) => setNewCriterion((s) => ({ ...s, weight: Number(e.target.value) }))} className="w-20" />
               </div>
               <Button onClick={handleAddCriterion}>
                 <Plus className="h-4 w-4" /> Add criterion
@@ -144,9 +144,18 @@ export function JudgingPanel({ round, eventId, currentUserId, canManage, criteri
                 const avg = teamAverage(t.id);
                 return (
                   <TableRow key={t.id}>
-                    <TableCell className="font-medium">{t.team_name}</TableCell>
+                    <TableCell className="font-medium">
+                      {t.team_name}
+                      {t.status === "disqualified" && (
+                        <Badge variant="destructive" className="ml-2">Disqualified: hidden from public results</Badge>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right">
-                      <FinalScoreInput roundId={round.id} teamId={t.id} initial={myScore(t.id)} />
+                      {t.status === "disqualified" ? (
+                        <span className="text-xs text-muted-foreground">Scoring closed</span>
+                      ) : (
+                        <FinalScoreInput roundId={round.id} teamId={t.id} initial={myScore(t.id)} teamName={t.team_name} />
+                      )}
                     </TableCell>
                     <TableCell className="text-right text-muted-foreground">{teamScores.length}</TableCell>
                     <TableCell className="text-right font-mono font-semibold">{avg !== null ? avg.toFixed(1) : "N/A"}</TableCell>
@@ -195,7 +204,7 @@ export function JudgingPanel({ round, eventId, currentUserId, canManage, criteri
               <CardTitle className="text-base">Qualification & ranking</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              {teams.map((t) => {
+              {teams.filter((t) => t.status !== "disqualified").map((t) => {
                 const q = qualifications.find((x) => x.team_id === t.id);
                 return (
                   <div key={t.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-2 text-sm">
@@ -204,6 +213,7 @@ export function JudgingPanel({ round, eventId, currentUserId, canManage, criteri
                       <Input
                         type="number"
                         placeholder="Rank"
+                        aria-label={`Rank for ${t.team_name}`}
                         defaultValue={q?.rank ?? ""}
                         className="w-20"
                         onBlur={(e) =>
@@ -221,7 +231,7 @@ export function JudgingPanel({ round, eventId, currentUserId, canManage, criteri
                           })
                         }
                       >
-                        <SelectTrigger className="w-36">
+                        <SelectTrigger className="w-36" aria-label={`Qualification status for ${t.team_name}`}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -323,7 +333,7 @@ function TeamScoresDialog({ teamName, scores, eventId }: { teamName: string; sco
   );
 }
 
-function FinalScoreInput({ roundId, teamId, initial }: { roundId: string; teamId: string; initial?: number }) {
+function FinalScoreInput({ roundId, teamId, initial, teamName }: { roundId: string; teamId: string; initial?: number; teamName: string }) {
   const [value, setValue] = useState(initial?.toString() ?? "");
   const [saving, setSaving] = useState(false);
 
@@ -351,6 +361,7 @@ function FinalScoreInput({ roundId, teamId, initial }: { roundId: string; teamId
       onChange={(e) => setValue(e.target.value)}
       onBlur={commit}
       className="w-20 text-right"
+      aria-label={`Your score for ${teamName} (1 to 100)`}
       disabled={saving}
     />
   );
