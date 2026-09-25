@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { getPublicEvent } from "@/lib/events";
 import { createClient } from "@/lib/supabase/server";
@@ -46,7 +47,14 @@ export const metadata: Metadata = {
   },
 };
 
-const CHECKLIST_ITEMS = ["Presentation", "Screenshots", "Demo video", "Codebase", "README"];
+// tile matches each logo's own background so the artwork blends in
+const PARTNERS = [
+  { name: "NextZen Technos", logo: "/partners/nextzen-technos.png", tile: "bg-black" },
+  { name: "Partner", logo: "/partners/partner-teal.png", tile: "bg-white" },
+  { name: "Red Matter", logo: "/partners/red-matter.png", tile: "bg-white" },
+];
+
+const CHECKLIST_ITEMS =["Presentation", "Screenshots", "Demo video", "Codebase", "README"];
 
 const ROUND_PREVIEW: Record<string, { icon: React.ComponentType<{ className?: string }>; blurb: string }> = {
   minor: { icon: ShieldCheck, blurb: "Demonstrate your skills through an online talent evaluation." },
@@ -296,6 +304,36 @@ export default async function HomePage() {
                 <p className="text-sm text-muted-foreground">Submissions, updates, and results in your dashboard.</p>
               </li>
             </ul>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ========================= PARTNERS ========================= */}
+      <section className="bg-background py-24 sm:py-28">
+        <div className="mx-auto max-w-5xl px-4 text-center sm:px-6">
+          <Reveal>
+            <p className="text-sm font-semibold uppercase tracking-[0.25em] text-rose">Partners</p>
+            <h2 className="mt-4 text-balance font-heading text-4xl font-bold leading-[1.05] sm:text-5xl">
+              Powered by people who build.
+            </h2>
+          </Reveal>
+          <Reveal delay={0.1}>
+            <div className="mt-10 flex flex-wrap justify-center gap-6">
+              {PARTNERS.map((partner) => (
+                <div
+                  key={partner.name}
+                  className={`card-glow overflow-hidden rounded-2xl border border-primary/20 shadow-[0_16px_40px_-16px_rgba(128,0,32,0.3)] ${partner.tile}`}
+                >
+                  <Image
+                    src={partner.logo}
+                    alt={partner.name}
+                    width={500}
+                    height={500}
+                    className="h-56 w-56 object-contain sm:h-64 sm:w-64"
+                  />
+                </div>
+              ))}
+            </div>
           </Reveal>
         </div>
       </section>
